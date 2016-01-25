@@ -1,4 +1,4 @@
-package ssht
+package app
 
 
 import (

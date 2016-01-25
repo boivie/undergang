@@ -1,14 +1,14 @@
 package main;
 import (
 	"net/http"
-	"github.com/boivie/ssht/ssht"
+	"github.com/boivie/undergang/app"
 	"log"
 )
 
 
 func main() {
-	ssht.Init()
-	http.HandleFunc("/", ssht.Forward)
+	app.Init()
+	http.HandleFunc("/", app.Forward)
 
 	log.Println("Accepting requests")
 	http.ListenAndServe(":8000", nil)
