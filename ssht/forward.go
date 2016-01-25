@@ -21,6 +21,8 @@ type ServerInfo struct {
 	ServerAddr string
 	Config     *ssh.ClientConfig
 	HttpProxy  HttpProxy
+	Bootstrap  []string
+	Run        string
 }
 
 type getConnReq struct {
@@ -33,35 +35,91 @@ var getConnChan chan getConnReq = make(chan getConnReq)
 
 const MAX_RETRIES_SERVER = 16
 
-func sshConnector() {
-	connections := make(map[string]*ssh.Client)
+func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
+	log.Printf("Connecting to SSH server at %s\n", info.ServerAddr)
+
+	currentRetriesServer := 0
+	var sshClientConn *ssh.Client
+	var err error
+
 	for {
-		req := <-getConnChan
-		addr := req.ServerInfo.ServerAddr
+		if sshClientConn, err = ssh.Dial(`tcp`, info.ServerAddr, info.Config); err == nil {
+			break
+		}
 
-		if conn, ok := connections[addr]; ok {
-			req.Reply <- conn
+		currentRetriesServer++
+		log.Printf("SSH Connection failed %s: %s\n", info.ServerAddr, err.Error())
+
+		if currentRetriesServer < MAX_RETRIES_SERVER {
+			log.Println(`Retry...`)
+			time.Sleep(1 * time.Second)
 		} else {
-			currentRetriesServer := 0
-			for {
-				if sshClientConn, err := ssh.Dial(`tcp`, addr, req.ServerInfo.Config); err != nil {
-					currentRetriesServer++
-					log.Printf("SSH Connection failed %s: %s\n", addr, err.Error())
+			log.Println(`No more retries for connecting the SSH server.`)
+			resp <- ConnectSSHResponse{ServerInfo: info}
+			return
+		}
+	}
+	log.Printf("SSH Connected to %s\n", info.ServerAddr)
 
-					if currentRetriesServer < MAX_RETRIES_SERVER {
-						log.Println(`Retry...`)
-						time.Sleep(1 * time.Second)
-					} else {
-						log.Println(`No more retries for connecting the SSH server.`)
-						req.Reply <- sshClientConn
-						break
-					}
-				} else {
-					connections[addr] = sshClientConn
-					log.Println(`Connected to the SSH server ` + addr)
-					req.Reply <- sshClientConn
-					break
+	for _, cmd := range info.Bootstrap {
+		log.Printf("Bootstrap: %s\n", cmd)
+		session, _ := sshClientConn.NewSession()
+		defer session.Close()
+		session.Run(cmd)
+	}
+	log.Printf("Bootstrap for %s done", info.ServerAddr)
+	if info.Run != "" {
+		session, _ := sshClientConn.NewSession()
+		defer session.Close()
+		session.Start(info.Run)
+		time.Sleep(500 * time.Millisecond)
+	}
+	resp <- ConnectSSHResponse{ServerInfo:info, client: sshClientConn}
+}
+
+type ConnectSSHResponse  struct {
+	ServerInfo *ServerInfo
+	client     *ssh.Client
+}
+
+func sshConnector() {
+	type ServerConnection struct {
+		client    *ssh.Client
+		connected bool
+		waitq     []chan *ssh.Client
+	}
+
+	connections := make(map[string]*ServerConnection)
+	connectionDone := make(chan ConnectSSHResponse)
+
+	for {
+		select {
+		case req := <-getConnChan:
+			addr := req.ServerInfo.ServerAddr
+			conn, _ := connections[addr];
+
+			if conn != nil && conn.connected {
+				req.Reply <- conn.client
+			} else {
+				if conn == nil {
+					conn = &ServerConnection{waitq: make([]chan *ssh.Client, 0)}
+					connections[addr] = conn
+					go connectSSH(req.ServerInfo, connectionDone)
 				}
+				conn.waitq = append(conn.waitq, req.Reply)
+			}
+		case msg := <-connectionDone:
+			addr := msg.ServerInfo.ServerAddr
+			conn, _ := connections[addr];
+			if conn == nil {
+				log.Println("Unsolicited connection done - should not happen")
+			} else {
+				conn.client = msg.client
+				conn.connected = true
+				for _, reply := range conn.waitq {
+					reply <- conn.client
+				}
+				conn.waitq = nil
 			}
 		}
 	}
@@ -187,6 +245,20 @@ func Init() {
 			LocalAddr: "127.0.0.1:8080",
 			LocalPathPrefix: "/",
 		},
+	}
+
+	mapping["/fremen/bash/"] = &ServerInfo{
+		ServerAddr: "1.1.1.1:22",
+		Config: config,
+		HttpProxy: HttpProxy{
+			LocalAddr: "127.0.0.1:8083",
+			LocalPathPrefix: "/",
+		},
+		Bootstrap: []string{
+			"/bin/sh -c '/usr/bin/curl -L https://github.com/yudai/gotty/releases/download/v0.0.12/gotty_linux_arm.tar.gz | /bin/tar zxv ./gotty -O - > /tmp/gotty'",
+			"/bin/chmod a+x /tmp/gotty",
+		},
+		Run: "/usr/bin/nohup /tmp/gotty -p 8083 -w -a 127.0.0.1 /bin/bash",
 	}
 
 	go sshConnector()
