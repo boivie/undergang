@@ -1,7 +1,10 @@
 package app
 
-import "strings"
-
+import (
+	"strings"
+	"github.com/franela/goreq"
+	"time"
+)
 
 type addPathReq struct {
 	path  PathInfo
@@ -11,6 +14,11 @@ type addPathReq struct {
 type lookupReq struct {
 	path  string
 	reply chan *PathInfo
+}
+
+type externalLookupResp struct {
+	req  lookupReq
+	info *PathInfo
 }
 
 var addPathChan chan addPathReq = make(chan addPathReq)
@@ -28,8 +36,35 @@ func LookupPath(path string) *PathInfo {
 	return <-reply
 }
 
-func pathManager() {
+func externalLookupWorker(url string, jobs <- chan lookupReq, results chan <- externalLookupResp) {
+	for j := range jobs {
+		req := goreq.Request{
+			Uri:         url + "?path=" + j.path,
+			Accept:      "application/json",
+			UserAgent:   "Undergang/1.0",
+			Timeout:     5 * time.Second,
+		}
+
+		if ret, err := req.Do(); err == nil && ret.StatusCode == 200 {
+			var path PathInfo
+			ret.Body.FromJsonTo(&path)
+			results <- externalLookupResp{j, &path}
+		} else {
+			results <- externalLookupResp{j, nil}
+		}
+	}
+}
+
+func pathManager(externalLookupUrl string) {
 	var mapping []PathInfo = make([]PathInfo, 0)
+	externalLookupReq := make(chan lookupReq, 100)
+	externalLookupResp := make(chan externalLookupResp, 100)
+
+	if externalLookupUrl != "" {
+		for w := 1; w<= 5; w++ {
+			go externalLookupWorker(externalLookupUrl, externalLookupReq, externalLookupResp)
+		}
+	}
 
 	for {
 		select {
@@ -46,7 +81,18 @@ func pathManager() {
 					}
 				}
 			}
-			msg.reply <- ret
+			if ret == nil && externalLookupUrl != "" {
+				externalLookupReq <- msg
+			} else {
+				msg.reply <- ret
+			}
+
+		case msg := <-externalLookupResp:
+			// Route replies to the client, while updating our mapping table as a cache
+			if msg.info != nil {
+				mapping = append(mapping, *msg.info)
+			}
+			msg.req.reply <- msg.info
 		}
 	}
 }

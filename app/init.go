@@ -1,6 +1,6 @@
 package app
 
-func Init() {
-	go pathManager()
+func Init(externalLookupUrl string) {
+	go pathManager(externalLookupUrl)
 	go sshConnector()
 }
