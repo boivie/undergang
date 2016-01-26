@@ -9,46 +9,45 @@ import (
 	"net/http/httputil"
 	"net"
 	"strings"
-	"io/ioutil"
 )
-
-type HttpProxy struct {
-	LocalAddr       string
-	LocalPathPrefix string
-}
-
-type ServerInfo struct {
-	ServerAddr string
-	Config     *ssh.ClientConfig
-	HttpProxy  HttpProxy
-	Bootstrap  []string
-	Run        string
-}
 
 type getConnReq struct {
 	ServerInfo *ServerInfo
 	Reply      chan *ssh.Client
 }
 
-var mapping map[string]*ServerInfo = make(map[string]*ServerInfo)
+var mapping []PathInfo = make([]PathInfo, 0)
 var getConnChan chan getConnReq = make(chan getConnReq)
 
 const MAX_RETRIES_SERVER = 16
 
 func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
-	log.Printf("Connecting to SSH server at %s\n", info.ServerAddr)
+	log.Printf("Connecting to SSH server at %s\n", info.Address)
+
+	key, err := ssh.ParsePrivateKey([]byte(info.SSHKey))
+	if err != nil {
+		log.Println(`Failed to parse PEM key.`)
+		resp <- ConnectSSHResponse{ServerInfo: info}
+		return
+	}
+
+	config := &ssh.ClientConfig{
+		User: info.Username,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(key),
+		},
+	}
 
 	currentRetriesServer := 0
 	var sshClientConn *ssh.Client
-	var err error
 
 	for {
-		if sshClientConn, err = ssh.Dial(`tcp`, info.ServerAddr, info.Config); err == nil {
+		if sshClientConn, err = ssh.Dial(`tcp`, info.Address, config); err == nil {
 			break
 		}
 
 		currentRetriesServer++
-		log.Printf("SSH Connection failed %s: %s\n", info.ServerAddr, err.Error())
+		log.Printf("SSH Connection failed %s: %s\n", info.Address, err.Error())
 
 		if currentRetriesServer < MAX_RETRIES_SERVER {
 			log.Println(`Retry...`)
@@ -59,7 +58,7 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
 			return
 		}
 	}
-	log.Printf("SSH Connected to %s\n", info.ServerAddr)
+	log.Printf("SSH Connected to %s\n", info.Address)
 
 	for _, cmd := range info.Bootstrap {
 		log.Printf("Bootstrap: %s\n", cmd)
@@ -67,7 +66,7 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
 		defer session.Close()
 		session.Run(cmd)
 	}
-	log.Printf("Bootstrap for %s done", info.ServerAddr)
+	log.Printf("Bootstrap for %s done", info.Address)
 	if info.Run != "" {
 		session, _ := sshClientConn.NewSession()
 		defer session.Close()
@@ -80,6 +79,10 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
 type ConnectSSHResponse  struct {
 	ServerInfo *ServerInfo
 	client     *ssh.Client
+}
+
+func AddPath(path PathInfo) {
+	mapping = append(mapping, path)
 }
 
 func sshConnector() {
@@ -95,7 +98,7 @@ func sshConnector() {
 	for {
 		select {
 		case req := <-getConnChan:
-			addr := req.ServerInfo.ServerAddr
+			addr := req.ServerInfo.Address
 			conn, _ := connections[addr];
 
 			if conn != nil && conn.connected {
@@ -109,7 +112,7 @@ func sshConnector() {
 				conn.waitq = append(conn.waitq, req.Reply)
 			}
 		case msg := <-connectionDone:
-			addr := msg.ServerInfo.ServerAddr
+			addr := msg.ServerInfo.Address
 			conn, _ := connections[addr];
 			if conn == nil {
 				log.Println("Unsolicited connection done - should not happen")
@@ -125,31 +128,32 @@ func sshConnector() {
 	}
 }
 
-func findLongestPrefix(mapping map[string]*ServerInfo, path string) (prefix string, info *ServerInfo) {
-	for iterPrefix, iterInfo := range mapping {
-		if strings.HasPrefix(path, iterPrefix) {
-			if len(prefix) < len(iterPrefix) {
-				prefix = iterPrefix
-				info = iterInfo
+func findLongestPrefix(mapping []PathInfo, path string) (info *PathInfo) {
+	for _, iter := range mapping {
+		if strings.HasPrefix(path, iter.Prefix) {
+			if info == nil ||  len(info.Prefix) < len(iter.Prefix) {
+				info = &iter
 			}
 		}
 	}
 	return
 }
 
+func getSSHConnection(info *ServerInfo) *ssh.Client {
+	clientChan := make(chan *ssh.Client)
+	getConnChan <- getConnReq{info, clientChan}
+	return <-clientChan
+}
+
 func Forward(w http.ResponseWriter, req *http.Request) {
-	prefix, info := findLongestPrefix(mapping, req.URL.Path)
+	info := findLongestPrefix(mapping, req.URL.Path)
 	if info == nil {
 		log.Println("Path not in mapping: " + req.URL.Path)
 		http.Error(w, "Path not mapped", http.StatusNotFound)
 		return
 	}
-	remainingPath := info.HttpProxy.LocalPathPrefix + strings.TrimPrefix(req.URL.Path, prefix)
 
-	clientChan := make(chan *ssh.Client)
-	getConnChan <- getConnReq{info, clientChan}
-	sshClient := <-clientChan
-
+	sshClient := getSSHConnection(&info.Server)
 	if sshClient == nil {
 		http.Error(w, "Backend connection failure", http.StatusInternalServerError)
 		return
@@ -157,16 +161,16 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 
 	var revProxy http.Handler
 	director := func(req *http.Request) {
-		req.URL.Path = remainingPath
+		req.URL.Path = info.HttpProxy.BasePath + strings.TrimPrefix(req.URL.Path, info.Prefix)
 		req.URL.Scheme = "http"
-		req.URL.Host = info.HttpProxy.LocalAddr
+		req.URL.Host = info.HttpProxy.Address
 	}
 
 	if (isWebsocket(req)) {
 		revProxy = &WebsocketReverseProxy{
 			Director: director,
 			Dial: func(network, addr string) (net.Conn, error) {
-				log.Println(`SSH->WebSocket @ ` + info.HttpProxy.LocalAddr)
+				log.Println(`SSH->WebSocket @ ` + info.HttpProxy.Address)
 				return sshClient.Dial(`tcp`, addr)
 			},
 		}
@@ -176,7 +180,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 			Director: director,
 			Transport: &http.Transport{
 				Dial: func(network, addr string) (net.Conn, error) {
-					log.Println(`SSH->HTTP @ ` + info.HttpProxy.LocalAddr)
+					log.Println(`SSH->HTTP @ ` + info.HttpProxy.Address)
 					return sshClient.Dial(`tcp`, addr)
 				},
 			},
@@ -185,18 +189,6 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 	revProxy.ServeHTTP(w, req)
 }
 
-func getKeyFile() (key ssh.Signer, err error) {
-	file := "go_id_rsa"
-	buf, err := ioutil.ReadFile(file)
-	if err != nil {
-		return
-	}
-	key, err = ssh.ParsePrivateKey(buf)
-	if err != nil {
-		return
-	}
-	return
-}
 
 func isWebsocket(req *http.Request) bool {
 	conn_hdr := ""
@@ -217,49 +209,5 @@ func isWebsocket(req *http.Request) bool {
 }
 
 func Init() {
-	key, err := getKeyFile()
-	if err != nil {
-		panic(err)
-	}
-
-	config := &ssh.ClientConfig{
-		User: "victor",
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(key),
-		},
-	}
-
-	mapping["/pi/helloworld/"] = &ServerInfo{
-		ServerAddr: "192.168.1.150:22",
-		Config: config,
-		HttpProxy: HttpProxy{
-			LocalAddr: "127.0.0.1:8899",
-			LocalPathPrefix: "/",
-		},
-	}
-
-	mapping["/pi/lovebeat/"] = &ServerInfo{
-		ServerAddr: "192.168.1.150:22",
-		Config: config,
-		HttpProxy: HttpProxy{
-			LocalAddr: "127.0.0.1:8080",
-			LocalPathPrefix: "/",
-		},
-	}
-
-	mapping["/fremen/bash/"] = &ServerInfo{
-		ServerAddr: "1.1.1.1:22",
-		Config: config,
-		HttpProxy: HttpProxy{
-			LocalAddr: "127.0.0.1:8083",
-			LocalPathPrefix: "/",
-		},
-		Bootstrap: []string{
-			"/bin/sh -c '/usr/bin/curl -L https://github.com/yudai/gotty/releases/download/v0.0.12/gotty_linux_arm.tar.gz | /bin/tar zxv ./gotty -O - > /tmp/gotty'",
-			"/bin/chmod a+x /tmp/gotty",
-		},
-		Run: "/usr/bin/nohup /tmp/gotty -p 8083 -w -a 127.0.0.1 /bin/bash",
-	}
-
 	go sshConnector()
 }
