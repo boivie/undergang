@@ -10,7 +10,7 @@ import (
 )
 
 func Forward(w http.ResponseWriter, req *http.Request) {
-	info := findLongestPrefix(mapping, req.URL.Path)
+	info := LookupPath(req.URL.Path)
 	if info == nil {
 		log.Println("Path not in mapping: " + req.URL.Path)
 		http.Error(w, "Path not mapped", http.StatusNotFound)
