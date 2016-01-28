@@ -6,7 +6,8 @@ import (
 )
 
 func main() {
-	app.Init("http://localhost:8001/_undergang/pathinfo", "http://localhost:8001/_undergang/access")
+	app.Init("http://localhost:8001/_undergang/pathinfo", "", "")
+
 	log.Println("Accepting requests")
 	http.HandleFunc("/", app.Forward)
 	err := http.ListenAndServe(":8002", nil)

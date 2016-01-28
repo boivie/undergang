@@ -20,7 +20,23 @@ type ConnectSSHResponse  struct {
 
 var getConnChan chan getConnReq = make(chan getConnReq)
 
-func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
+func dialSSH(info *ServerInfo, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
+	if proxyCommand == "" {
+		return ssh.Dial(`tcp`, info.Address, config)
+	} else {
+		conn, err := connectProxy(proxyCommand, info.Address)
+		if err != nil {
+			return nil, err
+		}
+		c, chans, reqs, err := ssh.NewClientConn(conn, info.Address, config)
+		if err != nil {
+			return nil, err
+		}
+		return ssh.NewClient(c, chans, reqs), nil
+	}
+}
+
+func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse, proxyCommand string) {
 	log.Printf("Connecting to SSH server at %s\n", info.Address)
 
 	key, err := ssh.ParsePrivateKey([]byte(info.SSHKey))
@@ -41,7 +57,7 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
 	var sshClientConn *ssh.Client
 
 	for {
-		if sshClientConn, err = ssh.Dial(`tcp`, info.Address, config); err == nil {
+		if sshClientConn, err = dialSSH(info, config, proxyCommand); err == nil {
 			break
 		}
 
@@ -75,7 +91,7 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse) {
 	resp <- ConnectSSHResponse{ServerInfo:info, client: sshClientConn}
 }
 
-func sshConnector() {
+func sshConnector(proxyCommand string) {
 	type ServerConnection struct {
 		client    *ssh.Client
 		connected bool
@@ -97,7 +113,7 @@ func sshConnector() {
 				if conn == nil {
 					conn = &ServerConnection{waitq: make([]chan *ssh.Client, 0)}
 					connections[addr] = conn
-					go connectSSH(req.ServerInfo, connectionDone)
+					go connectSSH(req.ServerInfo, connectionDone, proxyCommand)
 				}
 				conn.waitq = append(conn.waitq, req.Reply)
 			}
