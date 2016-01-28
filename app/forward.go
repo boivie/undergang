@@ -10,6 +10,15 @@ import (
 )
 
 func Forward(w http.ResponseWriter, req *http.Request) {
+	token := ""
+	if cookie, err := req.Cookie("access_token"); err == nil {
+		token = cookie.Value
+	}
+	if !LookupAccess(token, req.URL.Path) {
+		log.Println("Access denied: " + req.URL.Path)
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
 	info := LookupPath(req.URL.Path)
 	if info == nil {
 		log.Println("Path not in mapping: " + req.URL.Path)
