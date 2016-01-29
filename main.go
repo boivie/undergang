@@ -42,16 +42,17 @@ func main() {
 
 		if c.String("config") != "" {
 			var config struct {
-				paths []ug.PathInfo
+				Paths []ug.PathInfo
 			}
 			buf, err := ioutil.ReadFile(c.String("config"))
 			if err != nil {
 				panic(err)
 			}
-			if err = json.Unmarshal(buf, config); err != nil {
+			if err = json.Unmarshal(buf, &config); err != nil {
 				panic(err)
 			}
-			for _, path := range config.paths {
+			for _, path := range config.Paths {
+				log.Printf("Adding path mapping \"%s\"\n", path.Prefix)
 				ug.AddPath(path)
 			}
 		}
