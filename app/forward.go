@@ -9,26 +9,35 @@ import (
 	"strings"
 )
 
+func logRequest(req *http.Request, status int, reason string) {
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		host = req.RemoteAddr
+	}
+
+	log.Printf("%s %s %s %d \"%s\"\n", host, req.Method, req.RequestURI, http.StatusForbidden, reason)
+}
+
 func Forward(w http.ResponseWriter, req *http.Request) {
 	token := ""
 	if cookie, err := req.Cookie("access_token"); err == nil {
 		token = cookie.Value
 	}
 	if !LookupAccess(token, req.URL.Path) {
-		log.Println("Access denied: " + req.URL.Path)
+		logRequest(req, http.StatusForbidden, "Invalid access token")
 		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 	info := LookupPath(req.URL.Path)
 	if info == nil {
-		log.Println("Path not in mapping: " + req.URL.Path)
+		logRequest(req, http.StatusNotFound, "Path mapping not found")
 		http.Error(w, "Path not mapped", http.StatusNotFound)
 		return
 	}
 
 	sshClient := getSSHConnection(&info.Server)
 	if sshClient == nil {
-		http.Error(w, "Backend connection failure", http.StatusInternalServerError)
+		logRequest(req, http.StatusInternalServerError, "Couldn't connect to SSH server")
 		return
 	}
 
