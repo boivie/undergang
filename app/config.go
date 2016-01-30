@@ -14,7 +14,8 @@ type HttpProxy struct {
 }
 
 type PathInfo struct {
-	Prefix    string `json:"prefix"`
-	Server    ServerInfo `json:"server"`
-	HttpProxy *HttpProxy `json:"http_proxy"`
+	Prefix          string `json:"prefix"`
+	Server          ServerInfo `json:"server"`
+	HttpProxy       *HttpProxy `json:"http_proxy"`
+	StaticOverrides map[string]string `json:"static_overrides"`
 }

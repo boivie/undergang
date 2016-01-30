@@ -35,19 +35,23 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if serveStatic(info.StaticOverrides, w, req) {
+		return
+	}
+
 	sshClient := getSSHConnection(&info.Server)
 	if sshClient == nil {
 		logRequest(req, http.StatusInternalServerError, "Couldn't connect to SSH server")
 		return
 	}
 
-	var revProxy http.Handler
 	director := func(req *http.Request) {
 		req.URL.Path = info.HttpProxy.BasePath + strings.TrimPrefix(req.URL.Path, info.Prefix)
 		req.URL.Scheme = "http"
 		req.URL.Host = info.HttpProxy.Address
 	}
 
+	var revProxy http.Handler
 	if (isWebsocket(req)) {
 		revProxy = &WebsocketReverseProxy{
 			Director: director,
