@@ -1,11 +1,12 @@
 package app
 
 type ServerInfo struct {
-	Address   string `json:"address"`
-	Username  string `json:"username"`
-	SSHKey    string `json:"ssh_key"`
-	Bootstrap []string `json:"bootstrap"`
-	Run       string `json:"run"`
+	Address        string `json:"address"`
+	Username       string `json:"username"`
+	SSHKeyContents string `json:"ssh_key_contents"`
+	SSHKeyFileName string `json:"ssh_key_filename"`
+	Bootstrap      []string `json:"bootstrap"`
+	Run            string `json:"run"`
 }
 
 type HttpProxy struct {

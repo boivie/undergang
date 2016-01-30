@@ -4,6 +4,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"log"
 	"time"
+	"io/ioutil"
 )
 
 const MAX_RETRIES_SERVER = 16
@@ -37,9 +38,19 @@ func dialSSH(info *ServerInfo, config *ssh.ClientConfig, proxyCommand string) (*
 }
 
 func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse, proxyCommand string) {
-	log.Printf("Connecting to SSH server at %s\n", info.Address)
+	var err error
 
-	key, err := ssh.ParsePrivateKey([]byte(info.SSHKey))
+	log.Printf("Connecting to SSH server at %s\n", info.Address)
+	sshKey := []byte(info.SSHKeyContents)
+	if info.SSHKeyFileName != "" {
+		sshKey, err = ioutil.ReadFile(info.SSHKeyFileName)
+		if err != nil {
+			log.Printf("Failed to read SSH key: '%s'\n", info.SSHKeyFileName)
+			resp <- ConnectSSHResponse{ServerInfo: info}
+		}
+	}
+
+	key, err := ssh.ParsePrivateKey(sshKey)
 	if err != nil {
 		log.Println(`Failed to parse PEM key.`)
 		resp <- ConnectSSHResponse{ServerInfo: info}
