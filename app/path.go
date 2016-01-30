@@ -55,6 +55,18 @@ func externalLookupWorker(url string, jobs <- chan lookupReq, results chan <- ex
 	}
 }
 
+func lookupPath(mapping []PathInfo, path string) *PathInfo {
+	var best *PathInfo
+	for _, iter := range mapping {
+		if iter.Prefix != "" && strings.HasPrefix(path, iter.Prefix) {
+			if best == nil ||  len(best.Prefix) < len(iter.Prefix) {
+				best = &iter
+			}
+		}
+	}
+	return best
+}
+
 func pathManager(externalLookupUrl string) {
 	var mapping []PathInfo = make([]PathInfo, 0)
 	externalLookupReq := make(chan lookupReq, 100)
@@ -73,14 +85,8 @@ func pathManager(externalLookupUrl string) {
 			req.reply <- nil
 
 		case msg := <-lookupChan:
-			var ret *PathInfo
-			for _, iter := range mapping {
-				if strings.HasPrefix(msg.path, iter.Prefix) {
-					if ret == nil ||  len(ret.Prefix) < len(iter.Prefix) {
-						ret = &iter
-					}
-				}
-			}
+			ret := lookupPath(mapping, msg.path)
+
 			if ret == nil && externalLookupUrl != "" {
 				externalLookupReq <- msg
 			} else {
