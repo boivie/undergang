@@ -39,7 +39,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	sshClient := getSSHConnection(info.SSHTunnel)
+	sshClient := getSSHConnection(info.Prefix, info.SSHTunnel)
 	if sshClient == nil {
 		logRequest(req, http.StatusInternalServerError, "Couldn't connect to SSH server")
 		return
