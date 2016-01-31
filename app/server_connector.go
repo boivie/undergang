@@ -15,11 +15,6 @@ type getConnReq struct {
 	Reply chan net.Conn
 }
 
-type ConnectSSHResponse  struct {
-	prefix string
-	client *ssh.Client
-}
-
 var getConnChan chan getConnReq = make(chan getConnReq)
 
 func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
@@ -38,28 +33,28 @@ func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*s
 	}
 }
 
-func connectSSH(prefix string, info *SSHTunnel, resp chan ConnectSSHResponse, proxyCommand string) {
+func connectSSH(info *PathInfo, resp chan *ssh.Client, progress chan progressCmd, proxyCommand string) {
 	var err error
 
-	log.Printf("Connecting to SSH server at %s\n", info.Address)
-	sshKey := []byte(info.SSHKeyContents)
-	if info.SSHKeyFileName != "" {
-		sshKey, err = ioutil.ReadFile(info.SSHKeyFileName)
+	log.Printf("Connecting to SSH server at %s\n", info.SSHTunnel.Address)
+	sshKey := []byte(info.SSHTunnel.SSHKeyContents)
+	if info.SSHTunnel.SSHKeyFileName != "" {
+		sshKey, err = ioutil.ReadFile(info.SSHTunnel.SSHKeyFileName)
 		if err != nil {
-			log.Printf("Failed to read SSH key: '%s'\n", info.SSHKeyFileName)
-			resp <- ConnectSSHResponse{prefix: prefix, client: nil}
+			log.Printf("Failed to read SSH key: '%s'\n", info.SSHTunnel.SSHKeyFileName)
+			resp <- nil
 		}
 	}
 
 	key, err := ssh.ParsePrivateKey(sshKey)
 	if err != nil {
 		log.Println(`Failed to parse PEM key.`)
-		resp <- ConnectSSHResponse{prefix: prefix, client: nil}
+		resp <- nil
 		return
 	}
 
 	config := &ssh.ClientConfig{
-		User: info.Username,
+		User: info.SSHTunnel.Username,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(key),
 		},
@@ -69,81 +64,94 @@ func connectSSH(prefix string, info *SSHTunnel, resp chan ConnectSSHResponse, pr
 	var sshClientConn *ssh.Client
 
 	for {
-		if sshClientConn, err = dialSSH(info, config, proxyCommand); err == nil {
+		if sshClientConn, err = dialSSH(info.SSHTunnel, config, proxyCommand); err == nil {
 			break
 		}
 
 		currentRetriesServer++
-		log.Printf("SSH Connection failed %s: %s\n", info.Address, err.Error())
+		log.Printf("SSH Connection failed %s: %s\n", info.SSHTunnel.Address, err.Error())
 
 		if currentRetriesServer < MAX_RETRIES_SERVER {
 			log.Println(`Retry...`)
 			time.Sleep(1 * time.Second)
 		} else {
 			log.Println(`No more retries for connecting the SSH server.`)
-			resp <- ConnectSSHResponse{prefix: prefix, client: nil}
+			resp <- nil
 			return
 		}
 	}
-	log.Printf("SSH Connected to %s\n", info.Address)
+	log.Printf("SSH Connected to %s\n", info.SSHTunnel.Address)
 
-	for _, cmd := range info.Bootstrap {
+	for _, cmd := range info.SSHTunnel.Bootstrap {
 		log.Printf("Bootstrap: %s\n", cmd)
 		session, _ := sshClientConn.NewSession()
 		defer session.Close()
 		session.Run(cmd)
 	}
-	log.Printf("Bootstrap for %s done", info.Address)
-	if info.Run != "" {
+	log.Printf("Bootstrap for %s done", info.SSHTunnel.Address)
+	if info.SSHTunnel.Run != "" {
 		session, _ := sshClientConn.NewSession()
 		defer session.Close()
-		session.Start(info.Run)
+		session.Start(info.SSHTunnel.Run)
 		time.Sleep(500 * time.Millisecond)
 	}
-	resp <- ConnectSSHResponse{prefix: prefix, client: sshClientConn}
+	resp <- sshClientConn
 }
 
-func sshConnector(proxyCommand string) {
-	type ServerConnection struct {
-		info      *PathInfo
-		client    *ssh.Client
-		connected bool
-		waitq     []chan net.Conn
-	}
+type PrefixWorker struct {
+	getConn chan getConnReq
+}
 
-	// maps URL prefix -> connection info
-	connections := make(map[string]*ServerConnection)
-	connectionDone := make(chan ConnectSSHResponse)
+type progressCmd struct {
+	kind string
+	data interface{}
+}
+
+func (w *PrefixWorker) run(info *PathInfo, proxyCommand string) {
+	var client    *ssh.Client
+	waitq := make([]chan net.Conn, 0)
+	progress := make([]progressCmd, 0)
+
+	progressChan := make(chan progressCmd)
+	connectionDoneChan := make(chan *ssh.Client)
+	go connectSSH(info, connectionDoneChan, progressChan, proxyCommand)
 
 	for {
 		select {
-		case req := <-getConnChan:
-			conn, _ := connections[req.info.Prefix];
-
-			if conn != nil && conn.connected {
-				c, _ := conn.client.Dial("tcp", req.info.Backend.Address)
+		case req := <-w.getConn:
+			if client != nil {
+				c, _ := client.Dial("tcp", req.info.Backend.Address)
 				req.Reply <- c
 			} else {
-				if conn == nil {
-					conn = &ServerConnection{info: req.info, waitq: make([]chan net.Conn, 0)}
-					connections[req.info.Prefix] = conn
-					go connectSSH(req.info.Prefix, req.info.SSHTunnel, connectionDone, proxyCommand)
-				}
-				conn.waitq = append(conn.waitq, req.Reply)
+				waitq = append(waitq, req.Reply)
 			}
-		case msg := <-connectionDone:
-			conn, _ := connections[msg.prefix];
-			if conn == nil {
-				log.Println("Unsolicited connection done - should not happen")
-			} else {
-				conn.client = msg.client
-				conn.connected = true
-				for _, reply := range conn.waitq {
-					c, _ := conn.client.Dial("tcp", conn.info.Backend.Address)
-					reply <- c
-				}
-				conn.waitq = nil
+
+		case msg := <-connectionDoneChan:
+			client = msg
+			for _, reply := range waitq {
+				c, _ := client.Dial("tcp", info.Backend.Address)
+				reply <- c
 			}
+			waitq = nil
+		case msg := <-progressChan:
+			progress = append(progress, msg)
+		}
+	}
+}
+
+func sshMuxer(proxyCommand string) {
+	workers := make(map[string]*PrefixWorker)
+	for {
+		select {
+		case req := <-getConnChan:
+			worker, _ := workers[req.info.Prefix];
+			if worker == nil {
+				worker = &PrefixWorker{getConn: make(chan getConnReq)}
+				workers[req.info.Prefix] = worker
+				go worker.run(req.info, proxyCommand)
+			}
+
+			worker.getConn <- req
 		}
 	}
 }
