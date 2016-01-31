@@ -5,14 +5,14 @@ import (
 	"log"
 	"time"
 	"io/ioutil"
+	"net"
 )
 
 const MAX_RETRIES_SERVER = 16
 
 type getConnReq struct {
-	Prefix    string
-	SSHTunnel *SSHTunnel
-	Reply     chan *ssh.Client
+	info  *PathInfo
+	Reply chan net.Conn
 }
 
 type ConnectSSHResponse  struct {
@@ -105,9 +105,10 @@ func connectSSH(prefix string, info *SSHTunnel, resp chan ConnectSSHResponse, pr
 
 func sshConnector(proxyCommand string) {
 	type ServerConnection struct {
+		info      *PathInfo
 		client    *ssh.Client
 		connected bool
-		waitq     []chan *ssh.Client
+		waitq     []chan net.Conn
 	}
 
 	// maps URL prefix -> connection info
@@ -117,15 +118,16 @@ func sshConnector(proxyCommand string) {
 	for {
 		select {
 		case req := <-getConnChan:
-			conn, _ := connections[req.Prefix];
+			conn, _ := connections[req.info.Prefix];
 
 			if conn != nil && conn.connected {
-				req.Reply <- conn.client
+				c, _ := conn.client.Dial("tcp", req.info.Backend.Address)
+				req.Reply <- c
 			} else {
 				if conn == nil {
-					conn = &ServerConnection{waitq: make([]chan *ssh.Client, 0)}
-					connections[req.Prefix] = conn
-					go connectSSH(req.Prefix, req.SSHTunnel, connectionDone, proxyCommand)
+					conn = &ServerConnection{info: req.info, waitq: make([]chan net.Conn, 0)}
+					connections[req.info.Prefix] = conn
+					go connectSSH(req.info.Prefix, req.info.SSHTunnel, connectionDone, proxyCommand)
 				}
 				conn.waitq = append(conn.waitq, req.Reply)
 			}
@@ -137,7 +139,8 @@ func sshConnector(proxyCommand string) {
 				conn.client = msg.client
 				conn.connected = true
 				for _, reply := range conn.waitq {
-					reply <- conn.client
+					c, _ := conn.client.Dial("tcp", conn.info.Backend.Address)
+					reply <- c
 				}
 				conn.waitq = nil
 			}
@@ -145,8 +148,8 @@ func sshConnector(proxyCommand string) {
 	}
 }
 
-func getSSHConnection(prefix string, info *SSHTunnel) *ssh.Client {
-	clientChan := make(chan *ssh.Client)
-	getConnChan <- getConnReq{prefix, info, clientChan}
-	return <-clientChan
+func getBackendConnection(info *PathInfo) net.Conn {
+	replyChan := make(chan net.Conn)
+	getConnChan <- getConnReq{info, replyChan}
+	return <-replyChan
 }

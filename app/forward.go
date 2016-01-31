@@ -39,9 +39,9 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	sshClient := getSSHConnection(info.Prefix, info.SSHTunnel)
-	if sshClient == nil {
-		logRequest(req, http.StatusInternalServerError, "Couldn't connect to SSH server")
+	conn := getBackendConnection(info)
+	if conn == nil {
+		logRequest(req, http.StatusInternalServerError, "Couldn't connect to backend server")
 		return
 	}
 
@@ -57,7 +57,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 			Director: director,
 			Dial: func(network, addr string) (net.Conn, error) {
 				log.Println(`SSH->WebSocket @ ` + info.Backend.Address)
-				return sshClient.Dial(`tcp`, addr)
+				return conn, nil
 			},
 		}
 
@@ -67,7 +67,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 			Transport: &http.Transport{
 				Dial: func(network, addr string) (net.Conn, error) {
 					log.Println(`SSH->HTTP @ ` + info.Backend.Address)
-					return sshClient.Dial(`tcp`, addr)
+					return conn, nil
 				},
 			},
 		}
