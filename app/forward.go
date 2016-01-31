@@ -19,7 +19,22 @@ func logRequest(req *http.Request, status int, reason string) {
 }
 
 func showConnectionProgress(info *PathInfo, w http.ResponseWriter, req *http.Request) bool {
-	return false
+	// Only do this for modern browsers.
+	useragent := req.Header.Get("User-Agent")
+	if !strings.Contains(useragent, "Mozilla") || isWebsocket(req) {
+		return false
+	}
+
+	// Not for images and those kind of stuff?
+
+	reply := make(chan bool)
+	isReadyChan <- isReadyReq{info, reply}
+	if <-reply {
+		return false
+	} else {
+		serveProgressPage(w, req)
+		return true
+	}
 }
 
 func Forward(w http.ResponseWriter, req *http.Request) {
@@ -36,6 +51,10 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 	if info == nil {
 		logRequest(req, http.StatusNotFound, "Path mapping not found")
 		http.Error(w, "Path not mapped", http.StatusNotFound)
+		return
+	}
+
+	if serveProgressWebSocket(info, w, req) {
 		return
 	}
 
