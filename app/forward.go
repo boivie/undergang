@@ -39,16 +39,16 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	sshClient := getSSHConnection(&info.Server)
+	sshClient := getSSHConnection(info.SSHTunnel)
 	if sshClient == nil {
 		logRequest(req, http.StatusInternalServerError, "Couldn't connect to SSH server")
 		return
 	}
 
 	director := func(req *http.Request) {
-		req.URL.Path = info.HttpProxy.BasePath + strings.TrimPrefix(req.URL.Path, info.Prefix)
+		req.URL.Path = info.Backend.BasePath + strings.TrimPrefix(req.URL.Path, info.Prefix)
 		req.URL.Scheme = "http"
-		req.URL.Host = info.HttpProxy.Address
+		req.URL.Host = info.Backend.Address
 	}
 
 	var revProxy http.Handler
@@ -56,7 +56,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		revProxy = &WebsocketReverseProxy{
 			Director: director,
 			Dial: func(network, addr string) (net.Conn, error) {
-				log.Println(`SSH->WebSocket @ ` + info.HttpProxy.Address)
+				log.Println(`SSH->WebSocket @ ` + info.Backend.Address)
 				return sshClient.Dial(`tcp`, addr)
 			},
 		}
@@ -66,7 +66,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 			Director: director,
 			Transport: &http.Transport{
 				Dial: func(network, addr string) (net.Conn, error) {
-					log.Println(`SSH->HTTP @ ` + info.HttpProxy.Address)
+					log.Println(`SSH->HTTP @ ` + info.Backend.Address)
 					return sshClient.Dial(`tcp`, addr)
 				},
 			},

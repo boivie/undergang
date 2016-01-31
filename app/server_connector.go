@@ -10,18 +10,18 @@ import (
 const MAX_RETRIES_SERVER = 16
 
 type getConnReq struct {
-	ServerInfo *ServerInfo
+	SSHTunnel *SSHTunnel
 	Reply      chan *ssh.Client
 }
 
 type ConnectSSHResponse  struct {
-	ServerInfo *ServerInfo
+	SSHTunnel *SSHTunnel
 	client     *ssh.Client
 }
 
 var getConnChan chan getConnReq = make(chan getConnReq)
 
-func dialSSH(info *ServerInfo, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
+func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
 	if proxyCommand == "" {
 		return ssh.Dial(`tcp`, info.Address, config)
 	} else {
@@ -37,7 +37,7 @@ func dialSSH(info *ServerInfo, config *ssh.ClientConfig, proxyCommand string) (*
 	}
 }
 
-func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse, proxyCommand string) {
+func connectSSH(info *SSHTunnel, resp chan ConnectSSHResponse, proxyCommand string) {
 	var err error
 
 	log.Printf("Connecting to SSH server at %s\n", info.Address)
@@ -46,14 +46,14 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse, proxyCommand str
 		sshKey, err = ioutil.ReadFile(info.SSHKeyFileName)
 		if err != nil {
 			log.Printf("Failed to read SSH key: '%s'\n", info.SSHKeyFileName)
-			resp <- ConnectSSHResponse{ServerInfo: info}
+			resp <- ConnectSSHResponse{SSHTunnel: info}
 		}
 	}
 
 	key, err := ssh.ParsePrivateKey(sshKey)
 	if err != nil {
 		log.Println(`Failed to parse PEM key.`)
-		resp <- ConnectSSHResponse{ServerInfo: info}
+		resp <- ConnectSSHResponse{SSHTunnel: info}
 		return
 	}
 
@@ -80,7 +80,7 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse, proxyCommand str
 			time.Sleep(1 * time.Second)
 		} else {
 			log.Println(`No more retries for connecting the SSH server.`)
-			resp <- ConnectSSHResponse{ServerInfo: info}
+			resp <- ConnectSSHResponse{SSHTunnel: info}
 			return
 		}
 	}
@@ -99,7 +99,7 @@ func connectSSH(info *ServerInfo, resp chan ConnectSSHResponse, proxyCommand str
 		session.Start(info.Run)
 		time.Sleep(500 * time.Millisecond)
 	}
-	resp <- ConnectSSHResponse{ServerInfo:info, client: sshClientConn}
+	resp <- ConnectSSHResponse{SSHTunnel:info, client: sshClientConn}
 }
 
 func sshConnector(proxyCommand string) {
@@ -115,7 +115,7 @@ func sshConnector(proxyCommand string) {
 	for {
 		select {
 		case req := <-getConnChan:
-			addr := req.ServerInfo.Address
+			addr := req.SSHTunnel.Address
 			conn, _ := connections[addr];
 
 			if conn != nil && conn.connected {
@@ -124,12 +124,12 @@ func sshConnector(proxyCommand string) {
 				if conn == nil {
 					conn = &ServerConnection{waitq: make([]chan *ssh.Client, 0)}
 					connections[addr] = conn
-					go connectSSH(req.ServerInfo, connectionDone, proxyCommand)
+					go connectSSH(req.SSHTunnel, connectionDone, proxyCommand)
 				}
 				conn.waitq = append(conn.waitq, req.Reply)
 			}
 		case msg := <-connectionDone:
-			addr := msg.ServerInfo.Address
+			addr := msg.SSHTunnel.Address
 			conn, _ := connections[addr];
 			if conn == nil {
 				log.Println("Unsolicited connection done - should not happen")
@@ -145,7 +145,7 @@ func sshConnector(proxyCommand string) {
 	}
 }
 
-func getSSHConnection(info *ServerInfo) *ssh.Client {
+func getSSHConnection(info *SSHTunnel) *ssh.Client {
 	clientChan := make(chan *ssh.Client)
 	getConnChan <- getConnReq{info, clientChan}
 	return <-clientChan
