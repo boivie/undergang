@@ -18,6 +18,10 @@ func logRequest(req *http.Request, status int, reason string) {
 	log.Printf("%s %s %s %d \"%s\"\n", host, req.Method, req.RequestURI, http.StatusForbidden, reason)
 }
 
+func showConnectionProgress(info *PathInfo, w http.ResponseWriter, req *http.Request) bool {
+	return false
+}
+
 func Forward(w http.ResponseWriter, req *http.Request) {
 	token := ""
 	if cookie, err := req.Cookie("access_token"); err == nil {
@@ -36,6 +40,10 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if serveStatic(info.StaticOverrides, w, req) {
+		return
+	}
+
+	if showConnectionProgress(info, w, req) {
 		return
 	}
 
