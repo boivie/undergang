@@ -8,7 +8,6 @@ import (
 )
 
 const MAX_RETRIES_SERVER = 16
-var proxyCommand string
 
 type GetServerReq struct {
 	reply          chan *ssh.Client
