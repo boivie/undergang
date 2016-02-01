@@ -1,13 +1,18 @@
 package app
 
+type Command struct {
+	Description string `json:"description"`
+	Command     string `json:"command"`
+}
+
 type SSHTunnel struct {
 	Address        string `json:"address"`
 	Username       string `json:"username"`
 	SSHKeyContents string `json:"ssh_key_contents"`
 	SSHKeyFileName string `json:"ssh_key_filename"`
 
-	Bootstrap      []string `json:"bootstrap"`
-	Run            string `json:"run"`
+	Bootstrap      []Command `json:"bootstrap"`
+	Run            *Command `json:"run"`
 }
 
 type Backend struct {

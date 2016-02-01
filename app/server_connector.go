@@ -45,8 +45,9 @@ func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*s
 	}
 }
 
-func connectSSH(info *PathInfo, resp chan *ssh.Client, progress chan ProgressCmd, proxyCommand string) {
+func connectSSH(info *PathInfo, resp chan <- *ssh.Client, progress chan <- ProgressCmd, proxyCommand string) {
 	var err error
+
 	progress <- ProgressCmd{"connection_start", nil}
 	sshKey := []byte(info.SSHTunnel.SSHKeyContents)
 	if info.SSHTunnel.SSHKeyFileName != "" {
@@ -99,18 +100,12 @@ func connectSSH(info *PathInfo, resp chan *ssh.Client, progress chan ProgressCmd
 	log.Printf("SSH Connected to %s\n", info.SSHTunnel.Address)
 	progress <- ProgressCmd{"connection_ok", nil}
 
-	for _, cmd := range info.SSHTunnel.Bootstrap {
-		progress <- ProgressCmd{"bootstrap_begin", cmd}
+	runBootstrap(sshClientConn, info, progress)
+
+	if info.SSHTunnel.Run != nil {
 		session, _ := sshClientConn.NewSession()
 		defer session.Close()
-		session.Run(cmd)
-		progress <- ProgressCmd{"bootstrap_end", cmd}
-	}
-	progress <- ProgressCmd{"bootstrap_completed", nil}
-	if info.SSHTunnel.Run != "" {
-		session, _ := sshClientConn.NewSession()
-		defer session.Close()
-		session.Start(info.SSHTunnel.Run)
+		session.Start(info.SSHTunnel.Run.Command)
 		time.Sleep(500 * time.Millisecond)
 	}
 	log.Println("End connect SSH")
