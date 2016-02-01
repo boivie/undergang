@@ -83,7 +83,7 @@ func (c *connection) writePump() {
 	}
 }
 
-func serveProgressWebSocket(info *PathInfo, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressWebSocket(backend backend, w http.ResponseWriter, req *http.Request) bool {
 	if !strings.HasSuffix(req.RequestURI, "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws") {
 		return false
 	}
@@ -96,7 +96,7 @@ func serveProgressWebSocket(info *PathInfo, w http.ResponseWriter, req *http.Req
 	progress := make(chan ProgressCmd, 256)
 	c := &connection{ws: ws, progress: progress}
 
-	subscribeChan <- subscribeReq{info.Prefix, progress}
+	backend.Subscribe(progress)
 
 	go c.writePump()
 	c.readPump()
@@ -107,4 +107,24 @@ type broadcastMsg struct {
 	subscriber string
 	kind       string
 	data       interface{}
+}
+
+func progressBroker(progressChan <- chan ProgressCmd, subscribeChan <- chan chan ProgressCmd) {
+	progress := make([]ProgressCmd, 0)
+	subscribers := make([]chan ProgressCmd, 0)
+	for {
+		select {
+		case msg := <-progressChan:
+			progress = append(progress, msg)
+			for _, sub := range subscribers {
+				sub <- msg
+			}
+		case q := <-subscribeChan:
+		// Send all old progress first
+			for _, p := range progress {
+				q <- p
+			}
+			subscribers = append(subscribers, q)
+		}
+	}
 }

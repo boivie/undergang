@@ -1,7 +1,7 @@
 package app
 import "golang.org/x/crypto/ssh"
 
-func runBootstrap(ssh *ssh.Client, info *PathInfo, progress chan <- ProgressCmd) {
+func runBootstrap(ssh *ssh.Client, info PathInfo, progress chan <- ProgressCmd) {
 	type BootstrapStep struct {
 		Description string `json:"description"`
 		Status      string `json:"status"`

@@ -13,12 +13,12 @@ type addPathReq struct {
 
 type lookupReq struct {
 	path  string
-	reply chan *PathInfo
+	reply chan backend
 }
 
 type externalLookupResp struct {
 	req  lookupReq
-	info *PathInfo
+	path *PathInfo
 }
 
 var addPathChan chan addPathReq = make(chan addPathReq)
@@ -30,8 +30,8 @@ func AddPath(path PathInfo) {
 	<-reply
 }
 
-func LookupPath(path string) *PathInfo {
-	reply := make(chan *PathInfo)
+func LookupBackend(path string) backend {
+	reply := make(chan backend)
 	lookupChan <- lookupReq{path, reply}
 	return <-reply
 }
@@ -55,25 +55,27 @@ func externalLookupWorker(url string, jobs <- chan lookupReq, results chan <- ex
 	}
 }
 
-func lookupPath(mapping []PathInfo, path string) *PathInfo {
-	var best *PathInfo
-	for _, iter := range mapping {
-		if iter.Prefix != "" && strings.HasPrefix(path, iter.Prefix) {
-			if best == nil ||  len(best.Prefix) < len(iter.Prefix) {
-				best = &iter
+func lookupPath(mapping map[string]backend, path string) backend {
+	var bestPrefix string
+	var bestBackend backend
+	for prefix, backend := range mapping {
+		if strings.HasPrefix(path, prefix) {
+			if bestBackend == nil || len(bestPrefix) < len(prefix) {
+				bestPrefix = prefix
+				bestBackend = backend
 			}
 		}
 	}
-	return best
+	return bestBackend
 }
 
-func pathManager(externalLookupUrl string) {
-	var mapping []PathInfo = make([]PathInfo, 0)
+func backendManager(externalLookupUrl string) {
+	var mapping map[string]backend = make(map[string]backend)
 	externalLookupReq := make(chan lookupReq, 100)
 	externalLookupResp := make(chan externalLookupResp, 100)
 
 	if externalLookupUrl != "" {
-		for w := 1; w<= 5; w++ {
+		for w := 1; w <= 5; w++ {
 			go externalLookupWorker(externalLookupUrl, externalLookupReq, externalLookupResp)
 		}
 	}
@@ -81,7 +83,7 @@ func pathManager(externalLookupUrl string) {
 	for {
 		select {
 		case req := <-addPathChan:
-			mapping = append(mapping, req.path)
+			mapping[req.path.Prefix] = NewBackend(req.path)
 			req.reply <- nil
 
 		case msg := <-lookupChan:
@@ -94,11 +96,13 @@ func pathManager(externalLookupUrl string) {
 			}
 
 		case msg := <-externalLookupResp:
-			// Route replies to the client, while updating our mapping table as a cache
-			if msg.info != nil {
-				mapping = append(mapping, *msg.info)
+		// Route replies to the client, while updating our mapping table as a cache
+			var backend backend
+			if msg.path != nil {
+				backend = NewBackend(*msg.path)
+				mapping[msg.path.Prefix] = backend
 			}
-			msg.req.reply <- msg.info
+			msg.req.reply <- backend
 		}
 	}
 }

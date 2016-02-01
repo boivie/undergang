@@ -20,8 +20,15 @@ type Backend struct {
 	BasePath string `json:"base_path"`
 }
 
+type Provisioning struct {
+	// If this is 'started', undergang will periodically poll the /path endpoint every 5 seconds
+	// until it is 'done', 'failed' or the Provisioning field is missing.
+	Status bool `json:"status"`
+}
+
 type PathInfo struct {
 	Prefix          string `json:"prefix"`
+	Provisioning    *Provisioning `json:"provisioning"`
 	SSHTunnel       *SSHTunnel `json:"ssh_tunnel"`
 
 	Backend         *Backend `json:"backend"`

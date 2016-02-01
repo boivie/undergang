@@ -5,36 +5,16 @@ import (
 	"log"
 	"time"
 	"io/ioutil"
-	"net"
 	"errors"
 )
 
 const MAX_RETRIES_SERVER = 16
-
-type getConnReq struct {
-	info  *PathInfo
-	Reply chan net.Conn
-}
-
-type isReadyReq struct {
-	info  *PathInfo
-	Reply chan bool
-}
-
-type subscribeReq struct {
-	prefix string
-	topic  chan ProgressCmd
-}
+var proxyCommand string
 
 type ConnectionDone struct {
-	updatedInfo *PathInfo
-	client      *ssh.Client
-	err         error
+	client *ssh.Client
+	err    error
 }
-
-var getConnChan chan getConnReq = make(chan getConnReq)
-var subscribeChan chan subscribeReq = make(chan subscribeReq)
-var isReadyChan chan isReadyReq = make(chan isReadyReq)
 
 func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
 	if proxyCommand == "" {
@@ -52,7 +32,7 @@ func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*s
 	}
 }
 
-func connectSSH(info *PathInfo, resp chan <- ConnectionDone, progress chan <- ProgressCmd, proxyCommand string) {
+func connectSSH(info PathInfo, resp chan <- ConnectionDone, progress chan <- ProgressCmd) {
 	var err error
 
 	progress <- ProgressCmd{"connection_start", nil}
@@ -60,6 +40,7 @@ func connectSSH(info *PathInfo, resp chan <- ConnectionDone, progress chan <- Pr
 	if info.SSHTunnel.SSHKeyFileName != "" {
 		sshKey, err = ioutil.ReadFile(info.SSHTunnel.SSHKeyFileName)
 		if err != nil {
+			progress <- ProgressCmd{"connection_failed", nil}
 			resp <- ConnectionDone{err: errors.New("Failed to read SSH key")}
 			return
 		}
@@ -67,6 +48,7 @@ func connectSSH(info *PathInfo, resp chan <- ConnectionDone, progress chan <- Pr
 
 	key, err := ssh.ParsePrivateKey(sshKey)
 	if err != nil {
+		progress <- ProgressCmd{"connection_failed", nil}
 		resp <- ConnectionDone{err: errors.New("Failed to parse SSH key")}
 		return
 	}
@@ -95,6 +77,7 @@ func connectSSH(info *PathInfo, resp chan <- ConnectionDone, progress chan <- Pr
 			progress <- ProgressCmd{"connection_retry", nil}
 			time.Sleep(1 * time.Second)
 		} else {
+			progress <- ProgressCmd{"connection_failed", nil}
 			resp <- ConnectionDone{err: errors.New("Connection retry limit reached")}
 			return
 		}
@@ -109,105 +92,6 @@ func connectSSH(info *PathInfo, resp chan <- ConnectionDone, progress chan <- Pr
 		session.Start(info.SSHTunnel.Run.Command)
 		time.Sleep(500 * time.Millisecond)
 	}
-	resp <- ConnectionDone{updatedInfo: info, client: sshClientConn}
-}
-
-type PrefixWorker struct {
-	getConn           chan getConnReq
-	subscribeProgress chan chan ProgressCmd
-	isReadyChan       chan isReadyReq
-}
-
-func progressBroker(progressChan <- chan ProgressCmd, subscribeChan <- chan chan ProgressCmd) {
-	progress := make([]ProgressCmd, 0)
-	subscribers := make([]chan ProgressCmd, 0)
-	for {
-		select {
-		case msg := <-progressChan:
-			progress = append(progress, msg)
-			for _, sub := range subscribers {
-				sub <- msg
-			}
-		case q := <-subscribeChan:
-		// Send all old progress first
-			for _, p := range progress {
-				q <- p
-			}
-			subscribers = append(subscribers, q)
-		}
-	}
-}
-
-func (w *PrefixWorker) run(info *PathInfo, proxyCommand string) {
-	var client    *ssh.Client
-	waitq := make([]chan net.Conn, 0)
-
-	progressChan := make(chan ProgressCmd)
-	connectionDoneChan := make(chan ConnectionDone)
-	go progressBroker(progressChan, w.subscribeProgress)
-	go connectSSH(info, connectionDoneChan, progressChan, proxyCommand)
-	for {
-		select {
-		case req := <-w.getConn:
-			if client != nil {
-				c, _ := client.Dial("tcp", info.Backend.Address)
-				req.Reply <- c
-			} else {
-				waitq = append(waitq, req.Reply)
-			}
-		case req := <-w.isReadyChan:
-			req.Reply <- client != nil
-		case msg := <-connectionDoneChan:
-			client = msg.client
-			if client != nil {
-				progressChan <- ProgressCmd{"connection_success", nil}
-				info = msg.updatedInfo
-				for _, reply := range waitq {
-					c, _ := client.Dial("tcp", info.Backend.Address)
-					reply <- c
-				}
-				waitq = nil
-			} else {
-				progressChan <- ProgressCmd{"connection_failed", msg.err.Error()}
-			}
-		}
-	}
-}
-
-func ensurePresent(workers map[string]*PrefixWorker, info *PathInfo, proxyCommand string) *PrefixWorker {
-	worker, _ := workers[info.Prefix];
-	if worker == nil {
-		worker = &PrefixWorker{
-			getConn: make(chan getConnReq),
-			subscribeProgress: make(chan chan ProgressCmd),
-			isReadyChan: make(chan isReadyReq),
-		}
-		workers[info.Prefix] = worker
-		go worker.run(info, proxyCommand)
-	}
-	return worker
-}
-
-func sshMuxer(proxyCommand string) {
-	workers := make(map[string]*PrefixWorker)
-	for {
-		select {
-		case req := <-getConnChan:
-			worker := ensurePresent(workers, req.info, proxyCommand)
-			worker.getConn <- req
-		case req := <-subscribeChan:
-			if worker, ok := workers[req.prefix]; ok {
-				worker.subscribeProgress <- req.topic
-			}
-		case req := <-isReadyChan:
-			worker := ensurePresent(workers, req.info, proxyCommand)
-			worker.isReadyChan <- req
-		}
-	}
-}
-
-func getBackendConnection(info *PathInfo) net.Conn {
-	replyChan := make(chan net.Conn)
-	getConnChan <- getConnReq{info, replyChan}
-	return <-replyChan
+	progress <- ProgressCmd{"connection_success", nil}
+	resp <- ConnectionDone{client: sshClientConn}
 }

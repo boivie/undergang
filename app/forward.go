@@ -18,7 +18,7 @@ func logRequest(req *http.Request, status int, reason string) {
 	log.Printf("%s %s %s %d \"%s\"\n", host, req.Method, req.RequestURI, http.StatusForbidden, reason)
 }
 
-func showConnectionProgress(info *PathInfo, w http.ResponseWriter, req *http.Request) bool {
+func showConnectionProgress(backend backend, w http.ResponseWriter, req *http.Request) bool {
 	// Only do this for modern browsers.
 	useragent := req.Header.Get("User-Agent")
 	if !strings.Contains(useragent, "Mozilla") || isWebsocket(req) {
@@ -26,15 +26,12 @@ func showConnectionProgress(info *PathInfo, w http.ResponseWriter, req *http.Req
 	}
 
 	// Not for images and those kind of stuff?
-
-	reply := make(chan bool)
-	isReadyChan <- isReadyReq{info, reply}
-	if <-reply {
+	if backend.IsReady() {
 		return false
-	} else {
-		serveProgressPage(w, req)
-		return true
 	}
+
+	serveProgressPage(w, req)
+	return true
 }
 
 func Forward(w http.ResponseWriter, req *http.Request) {
@@ -47,35 +44,36 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
-	info := LookupPath(req.URL.Path)
-	if info == nil {
+
+	backend := LookupBackend(req.URL.Path)
+	if backend == nil {
 		logRequest(req, http.StatusNotFound, "Path mapping not found")
 		http.Error(w, "Path not mapped", http.StatusNotFound)
 		return
 	}
 
-	if serveProgressWebSocket(info, w, req) {
+	if serveProgressWebSocket(backend, w, req) {
 		return
 	}
 
-	if showConnectionProgress(info, w, req) {
+	if showConnectionProgress(backend, w, req) {
 		return
 	}
 
-	if serveStatic(info.StaticOverrides, w, req) {
+	if serveStatic(backend.GetInfo().StaticOverrides, w, req) {
 		return
 	}
 
-	conn := getBackendConnection(info)
+	conn := backend.Connect()
 	if conn == nil {
 		logRequest(req, http.StatusInternalServerError, "Couldn't connect to backend server")
 		return
 	}
 
 	director := func(req *http.Request) {
-		req.URL.Path = info.Backend.BasePath + strings.TrimPrefix(req.URL.Path, info.Prefix)
+		req.URL.Path = backend.GetInfo().Backend.BasePath + strings.TrimPrefix(req.URL.Path, backend.GetInfo().Prefix)
 		req.URL.Scheme = "http"
-		req.URL.Host = info.Backend.Address
+		req.URL.Host = backend.GetInfo().Backend.Address
 	}
 
 	var revProxy http.Handler
@@ -83,7 +81,6 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		revProxy = &WebsocketReverseProxy{
 			Director: director,
 			Dial: func(network, addr string) (net.Conn, error) {
-				log.Println(`SSH->WebSocket @ ` + info.Backend.Address)
 				return conn, nil
 			},
 		}
@@ -93,7 +90,6 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 			Director: director,
 			Transport: &http.Transport{
 				Dial: func(network, addr string) (net.Conn, error) {
-					log.Println(`SSH->HTTP @ ` + info.Backend.Address)
 					return conn, nil
 				},
 			},
