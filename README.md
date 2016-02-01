@@ -14,7 +14,7 @@ which can only be connected to over SSH.
 
 ## Usage
 
-Well, currently you have to edit the source code yourself. That will change.
+There is a configuration file you can edit.
 
 ## License
 
