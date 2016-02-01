@@ -58,11 +58,11 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if serveStatic(info.StaticOverrides, w, req) {
+	if showConnectionProgress(info, w, req) {
 		return
 	}
 
-	if showConnectionProgress(info, w, req) {
+	if serveStatic(info.StaticOverrides, w, req) {
 		return
 	}
 
