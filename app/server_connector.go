@@ -6,6 +6,7 @@ import (
 	"time"
 	"io/ioutil"
 	"net"
+	"errors"
 )
 
 const MAX_RETRIES_SERVER = 16
@@ -23,6 +24,12 @@ type isReadyReq struct {
 type subscribeReq struct {
 	prefix string
 	topic  chan ProgressCmd
+}
+
+type ConnectionDone struct {
+	updatedInfo *PathInfo
+	client      *ssh.Client
+	err         error
 }
 
 var getConnChan chan getConnReq = make(chan getConnReq)
@@ -45,7 +52,7 @@ func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*s
 	}
 }
 
-func connectSSH(info *PathInfo, resp chan <- *ssh.Client, progress chan <- ProgressCmd, proxyCommand string) {
+func connectSSH(info *PathInfo, resp chan <- ConnectionDone, progress chan <- ProgressCmd, proxyCommand string) {
 	var err error
 
 	progress <- ProgressCmd{"connection_start", nil}
@@ -53,17 +60,14 @@ func connectSSH(info *PathInfo, resp chan <- *ssh.Client, progress chan <- Progr
 	if info.SSHTunnel.SSHKeyFileName != "" {
 		sshKey, err = ioutil.ReadFile(info.SSHTunnel.SSHKeyFileName)
 		if err != nil {
-			log.Printf("Failed to read SSH key: '%s'\n", info.SSHTunnel.SSHKeyFileName)
-			resp <- nil
-			progress <- ProgressCmd{"connection_failed", nil}
+			resp <- ConnectionDone{err: errors.New("Failed to read SSH key")}
+			return
 		}
 	}
 
 	key, err := ssh.ParsePrivateKey(sshKey)
 	if err != nil {
-		log.Println(`Failed to parse PEM key.`)
-		resp <- nil
-		progress <- ProgressCmd{"connection_failed", nil}
+		resp <- ConnectionDone{err: errors.New("Failed to parse SSH key")}
 		return
 	}
 
@@ -91,14 +95,11 @@ func connectSSH(info *PathInfo, resp chan <- *ssh.Client, progress chan <- Progr
 			progress <- ProgressCmd{"connection_retry", nil}
 			time.Sleep(1 * time.Second)
 		} else {
-			log.Println(`No more retries for connecting the SSH server.`)
-			resp <- nil
-			progress <- ProgressCmd{"connection_failed", nil}
+			resp <- ConnectionDone{err: errors.New("Connection retry limit reached")}
 			return
 		}
 	}
-	log.Printf("SSH Connected to %s\n", info.SSHTunnel.Address)
-	progress <- ProgressCmd{"connection_ok", nil}
+	progress <- ProgressCmd{"connection_established", nil}
 
 	runBootstrap(sshClientConn, info, progress)
 
@@ -108,9 +109,7 @@ func connectSSH(info *PathInfo, resp chan <- *ssh.Client, progress chan <- Progr
 		session.Start(info.SSHTunnel.Run.Command)
 		time.Sleep(500 * time.Millisecond)
 	}
-	log.Println("End connect SSH")
-	resp <- sshClientConn
-	progress <- ProgressCmd{"connection_success", nil}
+	resp <- ConnectionDone{updatedInfo: info, client: sshClientConn}
 }
 
 type PrefixWorker struct {
@@ -119,43 +118,57 @@ type PrefixWorker struct {
 	isReadyChan       chan isReadyReq
 }
 
-func (w *PrefixWorker) run(info *PathInfo, proxyCommand string) {
-	var client    *ssh.Client
-	waitq := make([]chan net.Conn, 0)
+func progressBroker(progressChan <- chan ProgressCmd, subscribeChan <- chan chan ProgressCmd) {
 	progress := make([]ProgressCmd, 0)
 	subscribers := make([]chan ProgressCmd, 0)
-
-	progressChan := make(chan ProgressCmd)
-	connectionDoneChan := make(chan *ssh.Client)
-	go connectSSH(info, connectionDoneChan, progressChan, proxyCommand)
 	for {
 		select {
-		case req := <-w.getConn:
-			if client != nil {
-				c, _ := client.Dial("tcp", req.info.Backend.Address)
-				req.Reply <- c
-			} else {
-				waitq = append(waitq, req.Reply)
+		case msg := <-progressChan:
+			progress = append(progress, msg)
+			for _, sub := range subscribers {
+				sub <- msg
 			}
-		case q := <-w.subscribeProgress:
+		case q := <-subscribeChan:
 		// Send all old progress first
 			for _, p := range progress {
 				q <- p
 			}
 			subscribers = append(subscribers, q)
+		}
+	}
+}
+
+func (w *PrefixWorker) run(info *PathInfo, proxyCommand string) {
+	var client    *ssh.Client
+	waitq := make([]chan net.Conn, 0)
+
+	progressChan := make(chan ProgressCmd)
+	connectionDoneChan := make(chan ConnectionDone)
+	go progressBroker(progressChan, w.subscribeProgress)
+	go connectSSH(info, connectionDoneChan, progressChan, proxyCommand)
+	for {
+		select {
+		case req := <-w.getConn:
+			if client != nil {
+				c, _ := client.Dial("tcp", info.Backend.Address)
+				req.Reply <- c
+			} else {
+				waitq = append(waitq, req.Reply)
+			}
 		case req := <-w.isReadyChan:
 			req.Reply <- client != nil
 		case msg := <-connectionDoneChan:
-			client = msg
-			for _, reply := range waitq {
-				c, _ := client.Dial("tcp", info.Backend.Address)
-				reply <- c
-			}
-			waitq = nil
-		case msg := <-progressChan:
-			progress = append(progress, msg)
-			for _, sub := range subscribers {
-				sub <- msg
+			client = msg.client
+			if client != nil {
+				progressChan <- ProgressCmd{"connection_success", nil}
+				info = msg.updatedInfo
+				for _, reply := range waitq {
+					c, _ := client.Dial("tcp", info.Backend.Address)
+					reply <- c
+				}
+				waitq = nil
+			} else {
+				progressChan <- ProgressCmd{"connection_failed", msg.err.Error()}
 			}
 		}
 	}
