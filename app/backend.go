@@ -18,6 +18,7 @@ type backendStruct struct {
 	progressChan      chan ProgressCmd
 	getConn           chan chan net.Conn
 	isReadyChan       chan chan bool
+	getServerChan     chan GetServerReq
 }
 
 func (b *backendStruct)IsReady() bool {
@@ -41,14 +42,12 @@ func (b *backendStruct)GetInfo() PathInfo {
 }
 
 func (b *backendStruct)monitor() {
-	var client *ssh.Client
 	var isProvisioned bool
 	provisioningDone := make(chan *PathInfo)
-	connectionDone := make(chan ConnectionDone)
-	clientConnectionDone := make(chan *ssh.Client)
 
 	go progressBroker(b.progressChan, b.subscribeProgress)
-	go b.sshClientConnector(clientConnectionDone)
+	go b.sshServerConnector()
+	go b.sshClientConnector()
 	go waitProvisioning(&b.info, provisioningDone, b.progressChan)
 
 	for {
@@ -57,13 +56,11 @@ func (b *backendStruct)monitor() {
 			if newInfo != nil && !isProvisioned {
 				b.info = *newInfo
 				isProvisioned = true
-				go connectSSH(b.info, connectionDone, b.progressChan)
 			}
 		case reply := <-b.isReadyChan:
-			reply <- client != nil
-		case c := <-connectionDone:
-			client = c.client
-			clientConnectionDone <- client
+			myReply := make(chan *ssh.Client)
+			b.getServerChan <- GetServerReq{reply: myReply, returnDirectly:true}
+			reply <- (<-myReply) != nil
 		}
 	}
 }
@@ -76,6 +73,7 @@ func NewBackend(info PathInfo) backend {
 		make(chan ProgressCmd),
 		make(chan chan net.Conn),
 		make(chan chan bool),
+		make(chan GetServerReq),
 	}
 
 	go self.monitor()

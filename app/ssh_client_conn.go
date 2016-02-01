@@ -4,21 +4,16 @@ import (
 	"net"
 )
 
-func (w *backendStruct) sshClientConnector(serverConnectionChan <- chan *ssh.Client) {
-	var client    *ssh.Client
+func (w *backendStruct) sshClientConnector() {
 	waitq := make([]chan net.Conn, 0)
 
+	connectionDone := make(chan *ssh.Client)
 	for {
 		select {
 		case reply := <-w.getConn:
-			if client != nil {
-				c, _ := client.Dial("tcp", w.info.Backend.Address)
-				reply <- c
-			} else {
-				waitq = append(waitq, reply)
-			}
-		case c := <-serverConnectionChan:
-			client = c
+			waitq = append(waitq, reply)
+			w.getServerChan <- GetServerReq{reply:connectionDone}
+		case client := <-connectionDone:
 			if client != nil {
 				for _, reply := range waitq {
 					conn, _ := client.Dial("tcp", w.info.Backend.Address)
