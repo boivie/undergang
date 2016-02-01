@@ -23,7 +23,7 @@ type Backend struct {
 type Provisioning struct {
 	// If this is 'started', undergang will periodically poll the /path endpoint every 5 seconds
 	// until it is 'done', 'failed' or the Provisioning field is missing.
-	Status bool `json:"status"`
+	Status string `json:"status"`
 }
 
 type PathInfo struct {

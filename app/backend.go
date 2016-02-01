@@ -43,19 +43,19 @@ func (b *backendStruct)GetInfo() PathInfo {
 func (b *backendStruct)monitor() {
 	var client *ssh.Client
 	var isProvisioned bool
-	provisioningDone := make(chan bool)
+	provisioningDone := make(chan *PathInfo)
 	connectionDone := make(chan ConnectionDone)
 	clientConnectionDone := make(chan *ssh.Client)
 
 	go progressBroker(b.progressChan, b.subscribeProgress)
 	go b.sshClientConnector(clientConnectionDone)
-	go b.waitProvisioning(provisioningDone)
+	go waitProvisioning(&b.info, provisioningDone)
 
-	// Are we provisioned yet? Wait until that is done.
 	for {
 		select {
-		case provisioned := <-provisioningDone:
-			if provisioned && !isProvisioned {
+		case newInfo := <-provisioningDone:
+			if newInfo != nil && !isProvisioned {
+				b.info = *newInfo
 				isProvisioned = true
 				go connectSSH(b.info, connectionDone, b.progressChan)
 			}
