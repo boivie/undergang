@@ -2,7 +2,23 @@ package app
 import (
 	"golang.org/x/crypto/ssh"
 	"net"
+	"io"
 )
+
+func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) ([]chan net.Conn, bool) {
+	for len(waitq) > 0 {
+		reply := waitq[0]
+		conn, err := client.Dial("tcp", address)
+		if err != nil && err == io.EOF {
+			// Disconnected from the SSH server.
+			return waitq, true
+		}
+		reply <- conn
+
+		waitq = waitq[1:]
+	}
+	return waitq, false
+}
 
 func (w *backendStruct) sshClientConnector() {
 	waitq := make([]chan net.Conn, 0)
@@ -15,11 +31,10 @@ func (w *backendStruct) sshClientConnector() {
 			w.getServerChan <- GetServerReq{reply:connectionDone}
 		case client := <-connectionDone:
 			if client != nil {
-				for _, reply := range waitq {
-					conn, _ := client.Dial("tcp", w.info.Backend.Address)
-					reply <- conn
+				var disconnected bool
+				if waitq, disconnected = drainChildWaitq(waitq, w.info.Backend.Address, client); disconnected {
+					w.reconnectServerChan <- connectionDone
 				}
-				waitq = nil
 			}
 		}
 	}

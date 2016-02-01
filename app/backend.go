@@ -12,13 +12,14 @@ type backend interface {
 }
 
 type backendStruct struct {
-	prefix            string
-	info              PathInfo
-	subscribeProgress chan chan ProgressCmd
-	progressChan      chan ProgressCmd
-	getConn           chan chan net.Conn
-	isReadyChan       chan chan bool
-	getServerChan     chan GetServerReq
+	prefix              string
+	info                PathInfo
+	subscribeProgress   chan chan ProgressCmd
+	progressChan        chan ProgressCmd
+	getConn             chan chan net.Conn
+	isReadyChan         chan chan bool
+	getServerChan       chan GetServerReq
+	reconnectServerChan chan chan *ssh.Client
 }
 
 func (b *backendStruct)IsReady() bool {
@@ -74,6 +75,7 @@ func NewBackend(info PathInfo) backend {
 		make(chan chan net.Conn),
 		make(chan chan bool),
 		make(chan GetServerReq),
+		make(chan chan *ssh.Client),
 	}
 
 	go self.monitor()
