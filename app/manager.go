@@ -2,8 +2,6 @@ package app
 
 import (
 	"strings"
-	"github.com/franela/goreq"
-	"time"
 )
 
 type addPathReq struct {
@@ -14,11 +12,6 @@ type addPathReq struct {
 type lookupReq struct {
 	path  string
 	reply chan backend
-}
-
-type externalLookupResp struct {
-	req  lookupReq
-	path *PathInfo
 }
 
 var addPathChan chan addPathReq = make(chan addPathReq)
@@ -36,25 +29,6 @@ func LookupBackend(path string) backend {
 	return <-reply
 }
 
-func externalLookupWorker(url string, jobs <- chan lookupReq, results chan <- externalLookupResp) {
-	for j := range jobs {
-		req := goreq.Request{
-			Uri:         url + "?path=" + j.path,
-			Accept:      "application/json",
-			UserAgent:   "Undergang/1.0",
-			Timeout:     5 * time.Second,
-		}
-
-		if ret, err := req.Do(); err == nil && ret.StatusCode == 200 {
-			var path PathInfo
-			ret.Body.FromJsonTo(&path)
-			results <- externalLookupResp{j, &path}
-		} else {
-			results <- externalLookupResp{j, nil}
-		}
-	}
-}
-
 func lookupPath(mapping map[string]backend, path string) backend {
 	var bestPrefix string
 	var bestBackend backend
@@ -69,14 +43,14 @@ func lookupPath(mapping map[string]backend, path string) backend {
 	return bestBackend
 }
 
-func backendManager(externalLookupUrl string) {
+func backendManager() {
 	var mapping map[string]backend = make(map[string]backend)
 	externalLookupReq := make(chan lookupReq, 100)
 	externalLookupResp := make(chan externalLookupResp, 100)
 
 	if externalLookupUrl != "" {
 		for w := 1; w <= 5; w++ {
-			go externalLookupWorker(externalLookupUrl, externalLookupReq, externalLookupResp)
+			go externalLookupWorker(externalLookupReq, externalLookupResp)
 		}
 	}
 
