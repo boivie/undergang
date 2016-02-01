@@ -138,7 +138,15 @@ func connectSSH(info PathInfo, resp chan <- *ssh.Client, progress chan <- Progre
 
 	if info.SSHTunnel.Run != nil {
 		session, _ := sshClientConn.NewSession()
-		defer session.Close()
+
+		modes := ssh.TerminalModes{
+			ssh.ECHO:          0,
+		}
+
+		if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
+			log.Fatalf("request for pseudo terminal failed: %s", err)
+		}
+
 		session.Start(info.SSHTunnel.Run.Command)
 		time.Sleep(500 * time.Millisecond)
 	}
