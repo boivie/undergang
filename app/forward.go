@@ -7,6 +7,7 @@ import (
 	"net/http/httputil"
 	"net"
 	"strings"
+	"runtime"
 )
 
 func logRequest(req *http.Request, status int, reason string) {
@@ -35,6 +36,12 @@ func showConnectionProgress(backend backend, w http.ResponseWriter, req *http.Re
 }
 
 func Forward(w http.ResponseWriter, req *http.Request) {
+	if strings.HasSuffix(req.RequestURI, "/__ugdump") {
+		buf := make([]byte, 1 << 20)
+		runtime.Stack(buf, true)
+		log.Printf("=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf)
+		return
+	}
 	token := ""
 	if cookie, err := req.Cookie("access_token"); err == nil {
 		token = cookie.Value
