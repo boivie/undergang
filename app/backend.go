@@ -49,7 +49,7 @@ func (b *backendStruct)monitor() {
 
 	go progressBroker(b.progressChan, b.subscribeProgress)
 	go b.sshClientConnector(clientConnectionDone)
-	go waitProvisioning(&b.info, provisioningDone)
+	go waitProvisioning(&b.info, provisioningDone, b.progressChan)
 
 	for {
 		select {

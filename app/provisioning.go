@@ -1,16 +1,21 @@
 package app
 import "time"
 
-func waitProvisioning(origInfo *PathInfo, done chan *PathInfo) {
-	info := origInfo
+func waitProvisioning(origInfo *PathInfo, done chan *PathInfo, progress chan <- ProgressCmd) {
+	if origInfo.Provisioning == nil || origInfo.Provisioning.Status != "started" {
+		done <- origInfo
+		return
+	}
+
+	progress <- ProgressCmd{"wait_provisioning_start", nil}
 	for {
-		if info != nil && (info.Provisioning == nil || info.Provisioning.Status != "started") {
-			done <- info
+		newInfo := doLookup(origInfo.Prefix)
+		if newInfo != nil && (newInfo.Provisioning == nil || newInfo.Provisioning.Status != "started") {
+			done <- newInfo
+			progress <- ProgressCmd{"wait_provisioning_end", nil}
 			return
 		}
 
 		time.Sleep(5 * time.Second)
-
-		info = doLookup(origInfo.Prefix)
 	}
 }
