@@ -1,6 +1,5 @@
 package app
 import (
-	"strings"
 	"os/exec"
 	"net"
 	"io"
@@ -47,8 +46,11 @@ func (p *proxyConnection) SetWriteDeadline(t time.Time) error {
 }
 
 func connectProxy(proxyCommand, address string) (net.Conn, error) {
-	parts := strings.Split(address, ":")
-	cmd := exec.Command(proxyCommand, parts[0], parts[1])
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(proxyCommand, host, port)
 	stdin, _ := cmd.StdinPipe()
 	stdout, _ := cmd.StdoutPipe()
 	cmd.Stderr = os.Stderr
