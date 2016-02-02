@@ -36,6 +36,8 @@ func showConnectionProgress(backend backend, w http.ResponseWriter, req *http.Re
 }
 
 func Forward(w http.ResponseWriter, req *http.Request) {
+	log.Printf("%s %s%s", req.Method, req.Host, req.URL.Path)
+
 	if strings.HasSuffix(req.RequestURI, "/__ugdump") {
 		buf := make([]byte, 1 << 20)
 		runtime.Stack(buf, true)
