@@ -9,7 +9,7 @@ func waitProvisioning(origInfo *PathInfo, done chan *PathInfo, progress chan <- 
 
 	progress <- ProgressCmd{"wait_provisioning_start", nil}
 	for {
-		newInfo := doLookup(origInfo.Prefix)
+		newInfo := doLookup(origInfo.Host, origInfo.Prefix)
 		if newInfo != nil && (newInfo.Provisioning == nil || newInfo.Provisioning.Status != "started") {
 			done <- newInfo
 			progress <- ProgressCmd{"wait_provisioning_end", nil}

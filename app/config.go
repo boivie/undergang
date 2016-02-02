@@ -27,6 +27,7 @@ type Provisioning struct {
 }
 
 type PathInfo struct {
+	Host            string `json:"host"`
 	Prefix          string `json:"prefix"`
 	Provisioning    *Provisioning `json:"provisioning"`
 	SSHTunnel       *SSHTunnel `json:"ssh_tunnel"`

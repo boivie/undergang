@@ -52,7 +52,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	backend := LookupBackend(req.URL.Path)
+	backend := LookupBackend(req.Host, req.URL.Path)
 	if backend == nil {
 		logRequest(req, http.StatusNotFound, "Path mapping not found")
 		http.Error(w, "Path not mapped", http.StatusNotFound)

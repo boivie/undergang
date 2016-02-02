@@ -5,46 +5,65 @@ import (
 )
 
 type addPathReq struct {
-	path  PathInfo
+	info  PathInfo
 	reply chan error
 }
 
 type lookupReq struct {
+	host  string
 	path  string
 	reply chan backend
+}
+
+type mappingkey struct {
+	host   string
+	prefix string
 }
 
 var addPathChan chan addPathReq = make(chan addPathReq)
 var lookupChan chan lookupReq = make(chan lookupReq)
 
-func AddPath(path PathInfo) {
+func AddPath(info PathInfo) {
 	reply := make(chan error)
-	addPathChan <- addPathReq{path, reply}
+	addPathChan <- addPathReq{info, reply}
 	<-reply
 }
 
-func LookupBackend(path string) backend {
+func LookupBackend(host, path string) backend {
 	reply := make(chan backend)
-	lookupChan <- lookupReq{path, reply}
+	lookupChan <- lookupReq{host, path, reply}
 	return <-reply
 }
 
-func lookupPath(mapping map[string]backend, path string) backend {
+func lookupPath(mapping map[mappingkey]backend, host, path string) backend {
 	var bestPrefix string
 	var bestBackend backend
-	for prefix, backend := range mapping {
-		if strings.HasPrefix(path, prefix) {
-			if bestBackend == nil || len(bestPrefix) < len(prefix) {
-				bestPrefix = prefix
+	// Find exact match on host first
+	for mapkey, backend := range mapping {
+		if mapkey.host == host && strings.HasPrefix(path, mapkey.prefix) {
+			if bestBackend == nil || len(bestPrefix) < len(mapkey.prefix) {
+				bestPrefix = mapkey.prefix
 				bestBackend = backend
 			}
 		}
 	}
+
+	if bestBackend == nil {
+		for mapkey, backend := range mapping {
+			if mapkey.host == "" && strings.HasPrefix(path, mapkey.prefix) {
+				if bestBackend == nil || len(bestPrefix) < len(mapkey.prefix) {
+					bestPrefix = mapkey.prefix
+					bestBackend = backend
+				}
+			}
+		}
+	}
+
 	return bestBackend
 }
 
 func backendManager() {
-	var mapping map[string]backend = make(map[string]backend)
+	var mapping map[mappingkey]backend = make(map[mappingkey]backend)
 	externalLookupReq := make(chan lookupReq, 100)
 	externalLookupResp := make(chan externalLookupResp, 100)
 
@@ -57,11 +76,11 @@ func backendManager() {
 	for {
 		select {
 		case req := <-addPathChan:
-			mapping[req.path.Prefix] = NewBackend(req.path)
+			mapping[mappingkey{req.info.Host, req.info.Prefix}] = NewBackend(req.info)
 			req.reply <- nil
 
 		case msg := <-lookupChan:
-			ret := lookupPath(mapping, msg.path)
+			ret := lookupPath(mapping, msg.host, msg.path)
 
 			if ret == nil && externalLookupUrl != "" {
 				externalLookupReq <- msg
@@ -72,9 +91,9 @@ func backendManager() {
 		case msg := <-externalLookupResp:
 		// Route replies to the client, while updating our mapping table as a cache
 			var backend backend
-			if msg.path != nil {
-				backend = NewBackend(*msg.path)
-				mapping[msg.path.Prefix] = backend
+			if msg.info != nil {
+				backend = NewBackend(*msg.info)
+				mapping[mappingkey{msg.info.Host, msg.info.Prefix}] = backend
 			}
 			msg.req.reply <- backend
 		}

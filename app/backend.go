@@ -12,7 +12,6 @@ type backend interface {
 }
 
 type backendStruct struct {
-	prefix              string
 	info                PathInfo
 	subscribeProgress   chan chan ProgressCmd
 	progressChan        chan ProgressCmd
@@ -73,7 +72,6 @@ func (b *backendStruct)monitor() {
 
 func NewBackend(info PathInfo) backend {
 	self := backendStruct{
-		info.Prefix,
 		info,
 		make(chan chan ProgressCmd),
 		make(chan ProgressCmd),

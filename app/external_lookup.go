@@ -6,12 +6,12 @@ import (
 
 type externalLookupResp struct {
 	req  lookupReq
-	path *PathInfo
+	info *PathInfo
 }
 
-func doLookup(path string) *PathInfo {
+func doLookup(host string, path string) *PathInfo {
 	req := goreq.Request{
-		Uri:         externalLookupUrl + "?path=" + path,
+		Uri:         externalLookupUrl + "?host=" + host + "&path=" + path,
 		Accept:      "application/json",
 		UserAgent:   "Undergang/1.0",
 		Timeout:     5 * time.Second,
@@ -27,6 +27,6 @@ func doLookup(path string) *PathInfo {
 
 func externalLookupWorker(jobs <- chan lookupReq, results chan <- externalLookupResp) {
 	for j := range jobs {
-		results <- externalLookupResp{j, doLookup(j.path)}
+		results <- externalLookupResp{j, doLookup(j.host, j.path)}
 	}
 }
