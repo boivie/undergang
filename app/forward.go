@@ -7,7 +7,6 @@ import (
 	"net/http/httputil"
 	"net"
 	"strings"
-	"runtime"
 	"encoding/base64"
 )
 
@@ -64,13 +63,6 @@ func serveBasicAuth(backend backend, w http.ResponseWriter, req *http.Request) b
 
 func Forward(w http.ResponseWriter, req *http.Request) {
 	log.Printf("%s %s%s", req.Method, req.Host, req.URL.Path)
-
-	if strings.HasSuffix(req.RequestURI, "/__ugdump") {
-		buf := make([]byte, 1 << 20)
-		runtime.Stack(buf, true)
-		log.Printf("=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf)
-		return
-	}
 	token := ""
 	if cookie, err := req.Cookie("access_token"); err == nil {
 		token = cookie.Value

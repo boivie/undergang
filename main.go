@@ -58,7 +58,6 @@ func main() {
 		}
 
 		log.Printf("Accepting requests on %s\n", c.String("listen"))
-		http.HandleFunc("/", ug.Forward)
 		err := http.ListenAndServe(c.String("listen"), nil)
 		if err != nil {
 			panic(err)
