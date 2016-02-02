@@ -39,7 +39,7 @@ func (b *backendStruct)sshServerConnector() {
 			} else {
 				waitq = append(waitq, req.reply)
 			}
-			if client == nil && state == SSH_SERVER_DISCONNECTED {
+			if client == nil && state == SSH_SERVER_DISCONNECTED && b.info.SSHTunnel != nil {
 				state = SSH_SERVER_CONNECTING
 				go connectSSH(b.info, connectionDone, b.progressChan)
 			}

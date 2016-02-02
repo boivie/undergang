@@ -42,20 +42,27 @@ func (b *backendStruct)GetInfo() PathInfo {
 }
 
 func (b *backendStruct)monitor() {
-	var isProvisioned bool
+	isProvisioned := isProvisioned(&b.info)
 	provisioningDone := make(chan *PathInfo)
 
 	go progressBroker(b.progressChan, b.subscribeProgress)
 	go b.sshServerConnector()
 	go b.sshClientConnector()
-	go waitProvisioning(&b.info, provisioningDone, b.progressChan)
+	if !isProvisioned {
+		go waitProvisioning(&b.info, provisioningDone, b.progressChan)
+	}
 
 	for {
 		select {
 		case newInfo := <-provisioningDone:
-			if newInfo != nil && !isProvisioned {
+			if newInfo != nil {
 				b.info = *newInfo
 				isProvisioned = true
+
+				// Trigger a "connect to SSH"
+				myReply := make(chan *ssh.Client, 1)
+				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly:true}
+				<-myReply
 			}
 		case reply := <-b.isReadyChan:
 			if !isProvisioned {
