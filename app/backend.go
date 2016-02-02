@@ -59,9 +59,14 @@ func (b *backendStruct)monitor() {
 				isProvisioned = true
 			}
 		case reply := <-b.isReadyChan:
-			myReply := make(chan *ssh.Client, 1)
-			b.getServerChan <- GetServerReq{reply: myReply, returnDirectly:true}
-			reply <- (<-myReply != nil)
+			if !isProvisioned {
+				reply <- false
+			} else {
+				myReply := make(chan *ssh.Client, 1)
+				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly:true}
+				client := <-myReply
+				reply <- client != nil
+			}
 		}
 	}
 }
