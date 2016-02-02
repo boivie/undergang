@@ -150,6 +150,7 @@ func connectSSH(info PathInfo, resp chan <- *ssh.Client, progress chan <- Progre
 		session.Start(info.SSHTunnel.Run.Command)
 		time.Sleep(500 * time.Millisecond)
 	}
+	log.Printf("SSH-connection OK\n")
 	progress <- ProgressCmd{"connection_success", nil}
 	resp <- sshClientConn
 }

@@ -3,6 +3,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"net"
 	"io"
+	"log"
 )
 
 func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) ([]chan net.Conn, bool) {
@@ -12,6 +13,8 @@ func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) 
 		if err != nil && err == io.EOF {
 			// Disconnected from the SSH server.
 			return waitq, true
+		} else if err != nil {
+			log.Printf("Failed to connect to backend server at %s\n", address)
 		}
 		reply <- conn
 
