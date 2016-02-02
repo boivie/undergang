@@ -26,6 +26,11 @@ type Provisioning struct {
 	Status string `json:"status"`
 }
 
+type BasicAuth struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type PathInfo struct {
 	Host            string `json:"host"`
 	Prefix          string `json:"prefix"`
@@ -34,4 +39,6 @@ type PathInfo struct {
 
 	Backend         *Backend `json:"backend"`
 	StaticOverrides map[string]string `json:"static_overrides"`
+
+	BasicAuth       *BasicAuth `json:"basic_auth"`
 }

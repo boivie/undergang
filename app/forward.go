@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"runtime"
+	"encoding/base64"
 )
 
 func logRequest(req *http.Request, status int, reason string) {
@@ -35,6 +36,32 @@ func showConnectionProgress(backend backend, w http.ResponseWriter, req *http.Re
 	return true
 }
 
+func serveBasicAuth(backend backend, w http.ResponseWriter, req *http.Request) bool {
+	if authInfo := backend.GetInfo().BasicAuth; authInfo != nil {
+		authError := func() bool {
+			w.Header().Set("WWW-Authenticate", "Basic realm=\"Restricted Access\"")
+			http.Error(w, "authorization failed", http.StatusUnauthorized)
+			return true
+		}
+
+		auth := strings.SplitN(req.Header.Get("Authorization"), " ", 2)
+		if len(auth) != 2 || auth[0] != "Basic" {
+			return authError()
+		}
+
+		payload, err := base64.StdEncoding.DecodeString(auth[1])
+		if err != nil {
+			return authError()
+		}
+
+		pair := strings.SplitN(string(payload), ":", 2)
+		if len(pair) != 2 || !(pair[0] == authInfo.Username && pair[1] == authInfo.Password) {
+			return authError()
+		}
+	}
+	return false
+}
+
 func Forward(w http.ResponseWriter, req *http.Request) {
 	log.Printf("%s %s%s", req.Method, req.Host, req.URL.Path)
 
@@ -58,6 +85,10 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 	if backend == nil {
 		logRequest(req, http.StatusNotFound, "Path mapping not found")
 		http.Error(w, "Path not mapped", http.StatusNotFound)
+		return
+	}
+
+	if serveBasicAuth(backend, w, req) {
 		return
 	}
 
