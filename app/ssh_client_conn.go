@@ -23,7 +23,7 @@ func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) 
 func (w *backendStruct) sshClientConnector() {
 	waitq := make([]chan net.Conn, 0)
 
-	connectionDone := make(chan *ssh.Client, 1)
+	connectionDone := make(chan *ssh.Client, 100)
 	for {
 		select {
 		case reply := <-w.getConn:

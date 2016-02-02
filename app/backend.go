@@ -23,13 +23,13 @@ type backendStruct struct {
 }
 
 func (b *backendStruct)IsReady() bool {
-	reply := make(chan bool)
+	reply := make(chan bool, 1)
 	b.isReadyChan <- reply
 	return <-reply
 }
 
 func (b *backendStruct)Connect() net.Conn {
-	reply := make(chan net.Conn)
+	reply := make(chan net.Conn, 1)
 	b.getConn <- reply
 	return <-reply
 }
