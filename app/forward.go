@@ -67,7 +67,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if serveStatic(backend.GetInfo().StaticOverrides, w, req) {
+	if serveStatic(backend, w, req) {
 		return
 	}
 
