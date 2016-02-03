@@ -10,13 +10,14 @@ import (
 	"encoding/base64"
 )
 
-func logRequest(req *http.Request, status int, reason string) {
+func respond(w http.ResponseWriter, req *http.Request, reply string, status int) {
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
 		host = req.RemoteAddr
 	}
 
-	log.Printf("%s %s %s %d \"%s\"\n", host, req.Method, req.RequestURI, http.StatusForbidden, reason)
+	log.Printf("%s %s %s %d \"%s\"\n", host, req.Method, req.RequestURI, status, reply)
+	http.Error(w, reply, status)
 }
 
 func showConnectionProgress(backend backend, w http.ResponseWriter, req *http.Request) bool {
@@ -68,15 +69,13 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		token = cookie.Value
 	}
 	if !LookupAccess(token, req.URL.Path) {
-		logRequest(req, http.StatusForbidden, "Invalid access token")
-		http.Error(w, "Access denied", http.StatusForbidden)
+		respond(w, req, "Access denied", http.StatusForbidden)
 		return
 	}
 
 	backend := LookupBackend(req.Host, req.URL.Path)
 	if backend == nil {
-		logRequest(req, http.StatusNotFound, "Path mapping not found")
-		http.Error(w, "Path not mapped", http.StatusNotFound)
+		respond(w, req, "Path not mapped", http.StatusNotFound)
 		return
 	}
 
@@ -98,7 +97,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 
 	conn := backend.Connect()
 	if conn == nil {
-		logRequest(req, http.StatusInternalServerError, "Couldn't connect to backend server")
+		respond(w, req, "Couldn't connect to backend server", http.StatusInternalServerError)
 		return
 	}
 
