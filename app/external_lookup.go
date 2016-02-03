@@ -2,6 +2,8 @@ package app
 import (
 	"github.com/franela/goreq"
 	"time"
+	"net/url"
+	"log"
 )
 
 type externalLookupResp struct {
@@ -10,8 +12,10 @@ type externalLookupResp struct {
 }
 
 func doLookup(host string, path string) *PathInfo {
+	uri := externalLookupUrl + "?host=" + url.QueryEscape(host) + "&path=" + url.QueryEscape(path)
+	log.Printf("Asking %s about pathinfo\n", uri)
 	req := goreq.Request{
-		Uri:         externalLookupUrl + "?host=" + host + "&path=" + path,
+		Uri:         uri,
 		Accept:      "application/json",
 		UserAgent:   "Undergang/1.0",
 		Timeout:     5 * time.Second,
