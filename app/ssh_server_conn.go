@@ -30,6 +30,8 @@ func (b *backendStruct)sshServerConnector() {
 	state := SSH_SERVER_DISCONNECTED
 	waitq := make([]chan *ssh.Client, 0)
 
+	wd := watchdog(b)
+
 	connectionDone := make(chan *ssh.Client)
 	for {
 		select {
@@ -61,6 +63,8 @@ func (b *backendStruct)sshServerConnector() {
 				state = SSH_SERVER_CONNECTING
 				go connectSSH(b.info, connectionDone, b.progressChan)
 			}
+		case bark := <- wd:
+			bark <- true
 		}
 	}
 }

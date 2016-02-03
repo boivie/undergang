@@ -26,6 +26,8 @@ func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) 
 func (w *backendStruct) sshClientConnector() {
 	waitq := make([]chan net.Conn, 0)
 
+	wd := watchdog(w)
+
 	connectionDone := make(chan *ssh.Client, 100)
 	for {
 		select {
@@ -39,6 +41,8 @@ func (w *backendStruct) sshClientConnector() {
 					w.reconnectServerChan <- connectionDone
 				}
 			}
+		case bark := <- wd:
+			bark <- true
 		}
 	}
 }
