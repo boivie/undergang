@@ -24,7 +24,7 @@ var contents = []byte(`
     }
     if (window["WebSocket"]) {
         var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        conn = new WebSocket(wsProtocol + "://" + window.location.hostname + ":" + window.location.port + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws");
+        conn = new WebSocket(wsProtocol + "//" + window.location.hostname + ":" + window.location.port + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws");
         conn.onclose = function(evt) {
             appendLog($("<div><b>Connection closed.</b></div>"))
         }
