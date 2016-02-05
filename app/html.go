@@ -23,7 +23,8 @@ var contents = []byte(`
         }
     }
     if (window["WebSocket"]) {
-        conn = new WebSocket("ws://" + window.location.hostname + ":" + window.location.port + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws");
+        var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        conn = new WebSocket(wsProtocol + "://" + window.location.hostname + ":" + window.location.port + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws");
         conn.onclose = function(evt) {
             appendLog($("<div><b>Connection closed.</b></div>"))
         }
@@ -45,7 +46,7 @@ var contents = []byte(`
    http://www.samueljwebdesign.co.uk
    http://codepen.io/samueljweb/pen/LbGxi
 */
-@import url(http://fonts.googleapis.com/css?family=Lato:100,300,700);
+@import url(//fonts.googleapis.com/css?family=Lato:100,300,700);
 html {
   background-color: #41964B;
 }
