@@ -63,7 +63,7 @@ func (b *backendStruct)sshServerConnector() {
 				state = SSH_SERVER_CONNECTING
 				go connectSSH(b.info, connectionDone, b.progressChan)
 			}
-		case bark := <- wd:
+		case bark := <-wd:
 			bark <- true
 		}
 	}
