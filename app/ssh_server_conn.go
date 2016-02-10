@@ -7,7 +7,8 @@ import (
 	"io/ioutil"
 )
 
-const MAX_RETRIES_SERVER = 16
+const MAX_RETRIES_SERVER = 5 * 60
+const MAX_RETRIES_CLIENT = 5 * 60
 
 type GetServerReq struct {
 	reply          chan *ssh.Client
@@ -126,7 +127,7 @@ func connectSSH(info PathInfo, resp chan <- *ssh.Client, progress chan <- Progre
 		currentRetriesServer++
 		log.Printf("SSH Connection failed %s: %s\n", info.SSHTunnel.Address, err.Error())
 
-		if currentRetriesServer < MAX_RETRIES_SERVER {
+		if currentRetriesServer < (MAX_RETRIES_SERVER / 1) {
 			log.Println(`Retry...`)
 			progress <- ProgressCmd{"connection_retry", nil}
 			time.Sleep(1 * time.Second)
@@ -154,7 +155,28 @@ func connectSSH(info PathInfo, resp chan <- *ssh.Client, progress chan <- Progre
 		session.Start(info.SSHTunnel.Run.Command)
 		time.Sleep(500 * time.Millisecond)
 	}
-	log.Printf("SSH-connection OK\n")
+	log.Printf("SSH-connection OK. Waiting for %s to be ready...\n", info.Backend.Address)
+
+	progress <- ProgressCmd{"waiting_backend", nil}
+	currentRetriesClient := 0
+	for {
+		if conn, err := sshClientConn.Dial("tcp", info.Backend.Address); err == nil {
+			conn.Close()
+			break
+		}
+		currentRetriesClient++
+
+		if currentRetriesClient < (MAX_RETRIES_CLIENT / 5) {
+			log.Println(`Retry...`)
+			progress <- ProgressCmd{"waiting_backend_retry", nil}
+			time.Sleep(5 * time.Second)
+		} else {
+			progress <- ProgressCmd{"waiting_backend_timeout", "Connection retry limit reached"}
+			resp <- nil
+			return
+		}
+	}
+
 	progress <- ProgressCmd{"connection_success", nil}
 	resp <- sshClientConn
 }
