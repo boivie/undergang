@@ -24,10 +24,6 @@ func main() {
 			Usage: "URL for pathinfo service",
 		},
 		cli.StringFlag{
-			Name: "access",
-			Usage: "URL for access service",
-		},
-		cli.StringFlag{
 			Name: "sshproxy",
 			Usage: "Optional utility for proxying SSH connections",
 		},

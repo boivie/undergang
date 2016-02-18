@@ -64,15 +64,6 @@ func serveBasicAuth(backend backend, w http.ResponseWriter, req *http.Request) b
 
 func Forward(w http.ResponseWriter, req *http.Request) {
 	log.Printf("%s %s%s", req.Method, req.Host, req.URL.Path)
-	token := ""
-	if cookie, err := req.Cookie("access_token"); err == nil {
-		token = cookie.Value
-	}
-	if !LookupAccess(token, req.URL.Path) {
-		respond(w, req, "Access denied", http.StatusForbidden)
-		return
-	}
-
 	backend := LookupBackend(req.Host, req.URL.Path)
 	if backend == nil {
 		respond(w, req, "Path not mapped", http.StatusNotFound)
@@ -80,6 +71,16 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if serveBasicAuth(backend, w, req) {
+		return
+	}
+
+	// handles /__ug_auth?code=$code
+	if serveValidateServerAuth(backend, w, req) {
+		return
+	}
+
+	// if server auth is enabled, verify that the user is authenticated.
+	if serveServerAuth(backend, w, req) {
 		return
 	}
 

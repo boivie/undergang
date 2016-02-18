@@ -31,6 +31,16 @@ type BasicAuth struct {
 	Password string `json:"password"`
 }
 
+// Similar to an oauth2 authentication flow. If the user isn't authenticated,
+// we redirect him to AuthUrl?redirect_uri=$original_url/__ug_auth. When authenticated, the user will be
+// redirected back to $original_url/__ug_auth?code=$code. UG will then do a HTTP POST to ValidateUrl
+// with the code, and if correct, it will return 200 and UG will set a cookie limited to the domain
+// and redirect the user back to $original_url.
+type ServerAuth struct {
+	AuthUrl     string `json:"auth_url"`
+	ValidateUrl string `json:"validate_url"`
+}
+
 type PathInfo struct {
 	Host            string `json:"host"`
 	Prefix          string `json:"prefix"`
@@ -41,4 +51,6 @@ type PathInfo struct {
 	StaticOverrides map[string]string `json:"static_overrides"`
 
 	BasicAuth       *BasicAuth `json:"basic_auth"`
+
+	ServerAuth      *ServerAuth `json:"server_auth"`
 }
