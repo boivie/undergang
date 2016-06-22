@@ -1,16 +1,17 @@
 package app
+
 import (
+	"io"
+	"log"
 	"net/http"
 	"runtime"
-	"log"
-	"io"
 )
 
 var externalLookupUrl string
 var proxyCommand string
 
 func dumpHandler(w http.ResponseWriter, req *http.Request) {
-	buf := make([]byte, 1 << 20)
+	buf := make([]byte, 1<<20)
 	runtime.Stack(buf, true)
 	log.Printf("=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf)
 }

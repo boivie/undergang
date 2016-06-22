@@ -11,8 +11,8 @@ type SSHTunnel struct {
 	SSHKeyContents string `json:"ssh_key_contents"`
 	SSHKeyFileName string `json:"ssh_key_filename"`
 
-	Bootstrap      []Command `json:"bootstrap"`
-	Run            *Command `json:"run"`
+	Bootstrap []Command `json:"bootstrap"`
+	Run       *Command  `json:"run"`
 }
 
 type Backend struct {
@@ -42,15 +42,15 @@ type ServerAuth struct {
 }
 
 type PathInfo struct {
-	Host            string `json:"host"`
-	Prefix          string `json:"prefix"`
-	Provisioning    *Provisioning `json:"provisioning"`
-	SSHTunnel       *SSHTunnel `json:"ssh_tunnel"`
+	Host         string        `json:"host"`
+	Prefix       string        `json:"prefix"`
+	Provisioning *Provisioning `json:"provisioning"`
+	SSHTunnel    *SSHTunnel    `json:"ssh_tunnel"`
 
-	Backend         *Backend `json:"backend"`
+	Backend         *Backend          `json:"backend"`
 	StaticOverrides map[string]string `json:"static_overrides"`
 
-	BasicAuth       *BasicAuth `json:"basic_auth"`
+	BasicAuth *BasicAuth `json:"basic_auth"`
 
-	ServerAuth      *ServerAuth `json:"server_auth"`
+	ServerAuth *ServerAuth `json:"server_auth"`
 }

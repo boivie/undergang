@@ -1,9 +1,10 @@
 package app
+
 import (
 	"golang.org/x/crypto/ssh"
-	"net"
 	"io"
 	"log"
+	"net"
 )
 
 func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) ([]chan net.Conn, bool) {
@@ -33,7 +34,7 @@ func (w *backendStruct) sshClientConnector() {
 		select {
 		case reply := <-w.getConn:
 			waitq = append(waitq, reply)
-			w.getServerChan <- GetServerReq{reply:connectionDone}
+			w.getServerChan <- GetServerReq{reply: connectionDone}
 		case client := <-connectionDone:
 			if client != nil {
 				var disconnected bool
@@ -41,7 +42,7 @@ func (w *backendStruct) sshClientConnector() {
 					w.reconnectServerChan <- connectionDone
 				}
 			}
-		case bark := <- wd:
+		case bark := <-wd:
 			bark <- true
 		}
 	}

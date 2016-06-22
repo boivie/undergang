@@ -1,37 +1,36 @@
-package main;
+package main
+
 import (
-	"net/http"
+	"encoding/json"
 	ug "github.com/boivie/undergang/app"
 	"github.com/codegangsta/cli"
-	"log"
-	"os"
-	"encoding/json"
 	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
 )
-
 
 func main() {
 	app := cli.NewApp()
 	app.Name = "undergang"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name: "listen",
+			Name:  "listen",
 			Value: ":8002",
 			Usage: "Listening address (ip and port)",
 		},
 		cli.StringFlag{
-			Name: "pathinfo",
+			Name:  "pathinfo",
 			Usage: "URL for pathinfo service",
 		},
 		cli.StringFlag{
-			Name: "sshproxy",
+			Name:  "sshproxy",
 			Usage: "Optional utility for proxying SSH connections",
 		},
 		cli.StringFlag{
-			Name: "config",
+			Name:  "config",
 			Usage: "Configuration file",
 		},
-
 	}
 	app.Action = func(c *cli.Context) {
 		ug.Init(c.String("pathinfo"), c.String("access"), c.String("sshproxy"))

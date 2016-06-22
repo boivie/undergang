@@ -1,7 +1,8 @@
 package app
+
 import (
-	"net"
 	"golang.org/x/crypto/ssh"
+	"net"
 )
 
 type backend interface {
@@ -21,27 +22,27 @@ type backendStruct struct {
 	reconnectServerChan chan chan *ssh.Client
 }
 
-func (b *backendStruct)IsReady() bool {
+func (b *backendStruct) IsReady() bool {
 	reply := make(chan bool, 1)
 	b.isReadyChan <- reply
 	return <-reply
 }
 
-func (b *backendStruct)Connect() net.Conn {
+func (b *backendStruct) Connect() net.Conn {
 	reply := make(chan net.Conn, 1)
 	b.getConn <- reply
 	return <-reply
 }
 
-func (b *backendStruct)Subscribe(sub chan ProgressCmd) {
+func (b *backendStruct) Subscribe(sub chan ProgressCmd) {
 	b.subscribeProgress <- sub
 }
 
-func (b *backendStruct)GetInfo() PathInfo {
+func (b *backendStruct) GetInfo() PathInfo {
 	return b.info
 }
 
-func (b *backendStruct)monitor() {
+func (b *backendStruct) monitor() {
 	isProvisioned := isProvisioned(&b.info)
 	provisioningDone := make(chan *PathInfo)
 
@@ -61,7 +62,7 @@ func (b *backendStruct)monitor() {
 
 				// Trigger a "connect to SSH"
 				myReply := make(chan *ssh.Client, 1)
-				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly:true}
+				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly: true}
 				<-myReply
 			}
 		case reply := <-b.isReadyChan:
@@ -69,7 +70,7 @@ func (b *backendStruct)monitor() {
 				reply <- false
 			} else {
 				myReply := make(chan *ssh.Client, 1)
-				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly:true}
+				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly: true}
 				client := <-myReply
 				reply <- client != nil
 			}

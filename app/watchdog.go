@@ -1,8 +1,9 @@
 package app
+
 import (
-	"time"
-	"runtime"
 	"fmt"
+	"runtime"
+	"time"
 )
 
 func watchdog(who interface{}) chan chan bool {

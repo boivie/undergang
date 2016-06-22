@@ -3,10 +3,10 @@ package app
 import (
 	"crypto/subtle"
 	"encoding/base64"
-	"hash"
-	"time"
-	"strings"
 	"errors"
+	"hash"
+	"strings"
+	"time"
 )
 
 const (
@@ -100,9 +100,8 @@ func (s *TimestampSigner) Sign(msg string) string {
 	return s.SignWithTime(msg, time.Now().Unix())
 }
 
-
 func (s *TimestampSigner) SignWithTime(msg string, now int64) string {
-	return s.Signer.Sign(msg + s.Sep + base64URLEncode(intToBytes(now - EPOCH)))
+	return s.Signer.Sign(msg + s.Sep + base64URLEncode(intToBytes(now-EPOCH)))
 }
 
 func (s *TimestampSigner) Verify(b string, dur time.Duration) (string, error) {

@@ -1,13 +1,12 @@
 package app
 
-
 import (
+	"encoding/base64"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
-	"net"
 	"strings"
-	"encoding/base64"
 )
 
 func respond(w http.ResponseWriter, req *http.Request, reply string, status int) {
@@ -109,7 +108,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var revProxy http.Handler
-	if (isWebsocket(req)) {
+	if isWebsocket(req) {
 		revProxy = &WebsocketReverseProxy{
 			Director: director,
 			Dial: func(network, addr string) (net.Conn, error) {

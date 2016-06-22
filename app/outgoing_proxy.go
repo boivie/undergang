@@ -1,10 +1,11 @@
 package app
+
 import (
-	"os/exec"
-	"net"
 	"io"
-	"time"
+	"net"
 	"os"
+	"os/exec"
+	"time"
 )
 
 type proxyConnection struct {

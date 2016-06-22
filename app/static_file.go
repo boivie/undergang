@@ -1,11 +1,11 @@
 package app
+
 import (
-	"net/http"
 	"encoding/base64"
+	"net/http"
 	"strconv"
 	"strings"
 )
-
 
 func serveStatic(backend backend, w http.ResponseWriter, req *http.Request) bool {
 	if backend.GetInfo().StaticOverrides != nil {

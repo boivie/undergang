@@ -2,9 +2,9 @@ package app
 
 import (
 	"golang.org/x/crypto/ssh"
+	"io/ioutil"
 	"log"
 	"time"
-	"io/ioutil"
 )
 
 const MAX_RETRIES_SERVER = 60 * 60
@@ -22,11 +22,11 @@ type ConnectionDone struct {
 
 const (
 	SSH_SERVER_DISCONNECTED = iota
-	SSH_SERVER_CONNECTING = iota
-	SSH_SERVER_CONNECTED = iota
+	SSH_SERVER_CONNECTING   = iota
+	SSH_SERVER_CONNECTED    = iota
 )
 
-func (b *backendStruct)sshServerConnector() {
+func (b *backendStruct) sshServerConnector() {
 	var client *ssh.Client
 	state := SSH_SERVER_DISCONNECTED
 	waitq := make([]chan *ssh.Client, 0)
@@ -86,7 +86,7 @@ func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*s
 	}
 }
 
-func connectSSH(info PathInfo, resp chan <- *ssh.Client, progress chan <- ProgressCmd) {
+func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- ProgressCmd) {
 	var err error
 	log.Printf("SSH-connecting to %s\n", info.SSHTunnel.Address)
 
@@ -145,7 +145,7 @@ func connectSSH(info PathInfo, resp chan <- *ssh.Client, progress chan <- Progre
 		session, _ := sshClientConn.NewSession()
 
 		modes := ssh.TerminalModes{
-			ssh.ECHO:          0,
+			ssh.ECHO: 0,
 		}
 
 		if err := session.RequestPty("xterm", 80, 40, modes); err != nil {

@@ -89,7 +89,7 @@ func backendManager() {
 			}
 
 		case msg := <-externalLookupResp:
-		// Route replies to the client, while updating our mapping table as a cache
+			// Route replies to the client, while updating our mapping table as a cache
 			var backend backend
 			if msg.info != nil {
 				backend = NewBackend(*msg.info)

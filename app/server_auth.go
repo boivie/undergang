@@ -1,14 +1,14 @@
 package app
+
 import (
-	"net/http"
-	"strings"
-	"github.com/franela/goreq"
-	"time"
 	"crypto/sha1"
 	"fmt"
+	"github.com/franela/goreq"
+	"net/http"
 	"net/url"
+	"strings"
+	"time"
 )
-
 
 const SERVER_AUTH_ENDPOINT = "/__undergang_02648018bfd74fa5a4ed50db9bb07859_auth"
 const SERVER_AUTH_COOKIE = "undergang_02648018bfd74fa5a4ed50db9bb07859_auth"
@@ -52,8 +52,8 @@ func serveValidateServerAuth(backend backend, w http.ResponseWriter, req *http.R
 		if ret, err := gr.Do(); err == nil && ret.StatusCode == 200 {
 			if ret.Body.FromJsonTo(&parsed) == nil && parsed.AccessToken != "" {
 				cookie := &http.Cookie{
-					Path: info.Prefix,
-					Name: SERVER_AUTH_COOKIE,
+					Path:  info.Prefix,
+					Name:  SERVER_AUTH_COOKIE,
 					Value: NewTimestampSigner(sha1.New()).Sign(getCookieToken(info)),
 				}
 				http.SetCookie(w, cookie)
@@ -75,7 +75,7 @@ func serveValidateServerAuth(backend backend, w http.ResponseWriter, req *http.R
 
 func getScheme(r *http.Request) string {
 	if r.URL.Scheme == "https" {
-		return "https";
+		return "https"
 	}
 	if strings.HasPrefix(r.Proto, "HTTPS") {
 		return "https"

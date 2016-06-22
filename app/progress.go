@@ -1,23 +1,23 @@
 package app
 
 import (
-	"github.com/gorilla/websocket"
-	"net/http"
-	"time"
 	"encoding/json"
+	"github.com/gorilla/websocket"
 	"log"
+	"net/http"
 	"strings"
+	"time"
 )
 
 type ProgressCmd struct {
-	Kind string `json:"kind"`
+	Kind string      `json:"kind"`
 	Data interface{} `json:"data"`
 }
 
 const (
-	writeWait = 10 * time.Second
-	pongWait = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
 	maxMessageSize = 512
 )
 
@@ -109,7 +109,7 @@ type broadcastMsg struct {
 	data       interface{}
 }
 
-func progressBroker(progressChan <- chan ProgressCmd, subscribeChan <- chan chan ProgressCmd) {
+func progressBroker(progressChan <-chan ProgressCmd, subscribeChan <-chan chan ProgressCmd) {
 	progress := make([]ProgressCmd, 0)
 	subscribers := make([]chan ProgressCmd, 0)
 	for {
@@ -120,7 +120,7 @@ func progressBroker(progressChan <- chan ProgressCmd, subscribeChan <- chan chan
 				sub <- msg
 			}
 		case q := <-subscribeChan:
-		// Send all old progress first
+			// Send all old progress first
 			for _, p := range progress {
 				q <- p
 			}

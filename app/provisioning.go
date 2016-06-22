@@ -1,11 +1,12 @@
 package app
+
 import "time"
 
 func isProvisioned(info *PathInfo) bool {
 	return info.Provisioning == nil || info.Provisioning.Status != "started"
 }
 
-func waitProvisioning(origInfo *PathInfo, done chan *PathInfo, progress chan <- ProgressCmd) {
+func waitProvisioning(origInfo *PathInfo, done chan *PathInfo, progress chan<- ProgressCmd) {
 	progress <- ProgressCmd{"wait_provisioning_start", nil}
 	for {
 		newInfo := doLookup(origInfo.Host, origInfo.Prefix)
