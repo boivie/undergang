@@ -20,56 +20,6 @@ type ConnectionDone struct {
 	err    error
 }
 
-const (
-	SSH_SERVER_DISCONNECTED = iota
-	SSH_SERVER_CONNECTING   = iota
-	SSH_SERVER_CONNECTED    = iota
-)
-
-func (b *backendStruct) sshServerConnector() {
-	var client *ssh.Client
-	state := SSH_SERVER_DISCONNECTED
-	waitq := make([]chan *ssh.Client, 0)
-
-	wd := watchdog(b)
-
-	connectionDone := make(chan *ssh.Client)
-	for {
-		select {
-		case req := <-b.getServerChan:
-			if req.returnDirectly || client != nil {
-				req.reply <- client
-			} else {
-				waitq = append(waitq, req.reply)
-			}
-			if client == nil && state == SSH_SERVER_DISCONNECTED && b.info.SSHTunnel != nil {
-				state = SSH_SERVER_CONNECTING
-				go connectSSH(b.info, connectionDone, b.progressChan)
-			}
-		case c := <-connectionDone:
-			client = c
-			if c != nil {
-				state = SSH_SERVER_CONNECTED
-				for _, reply := range waitq {
-					reply <- c
-				}
-				waitq = nil
-			} else {
-				state = SSH_SERVER_DISCONNECTED
-			}
-		case reply := <-b.reconnectServerChan:
-			waitq = append(waitq, reply)
-			if state != SSH_SERVER_CONNECTING {
-				client = nil
-				state = SSH_SERVER_CONNECTING
-				go connectSSH(b.info, connectionDone, b.progressChan)
-			}
-		case bark := <-wd:
-			bark <- true
-		}
-	}
-}
-
 func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
 	if proxyCommand == "" {
 		return ssh.Dial(`tcp`, info.Address, config)

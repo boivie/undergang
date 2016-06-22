@@ -12,6 +12,12 @@ type backend interface {
 	Subscribe(chan ProgressCmd)
 }
 
+const (
+	SSH_SERVER_DISCONNECTED = iota
+	SSH_SERVER_CONNECTING   = iota
+	SSH_SERVER_CONNECTED    = iota
+)
+
 type backendStruct struct {
 	info                PathInfo
 	subscribeProgress   chan chan ProgressCmd
@@ -47,11 +53,21 @@ func (b *backendStruct) monitor() {
 	provisioningDone := make(chan *PathInfo)
 
 	go progressBroker(b.progressChan, b.subscribeProgress)
-	go b.sshServerConnector()
-	go b.sshClientConnector()
 	if !isProvisioned {
 		go waitProvisioning(&b.info, provisioningDone, b.progressChan)
 	}
+
+	clientWaitQ := make([]chan net.Conn, 0)
+
+	clientConnectionDone := make(chan *ssh.Client, 100)
+
+	var client *ssh.Client
+	state := SSH_SERVER_DISCONNECTED
+	serverWaitQ := make([]chan *ssh.Client, 0)
+
+	wd := watchdog(b)
+
+	connectionDone := make(chan *ssh.Client)
 
 	for {
 		select {
@@ -74,6 +90,47 @@ func (b *backendStruct) monitor() {
 				client := <-myReply
 				reply <- client != nil
 			}
+		case reply := <-b.getConn:
+			clientWaitQ = append(clientWaitQ, reply)
+			b.getServerChan <- GetServerReq{reply: clientConnectionDone}
+		case client := <-clientConnectionDone:
+			if client != nil {
+				var disconnected bool
+				if clientWaitQ, disconnected = drainChildWaitq(clientWaitQ, b.info.Backend.Address, client); disconnected {
+					b.reconnectServerChan <- clientConnectionDone
+				}
+			}
+		case req := <-b.getServerChan:
+			if req.returnDirectly || client != nil {
+				req.reply <- client
+			} else {
+				serverWaitQ = append(serverWaitQ, req.reply)
+			}
+			if client == nil && state == SSH_SERVER_DISCONNECTED && b.info.SSHTunnel != nil {
+				state = SSH_SERVER_CONNECTING
+				go connectSSH(b.info, connectionDone, b.progressChan)
+			}
+		case c := <-connectionDone:
+			client = c
+			if c != nil {
+				state = SSH_SERVER_CONNECTED
+				for _, reply := range serverWaitQ {
+					reply <- c
+				}
+				serverWaitQ = nil
+			} else {
+				state = SSH_SERVER_DISCONNECTED
+			}
+		case reply := <-b.reconnectServerChan:
+			serverWaitQ = append(serverWaitQ, reply)
+			if state != SSH_SERVER_CONNECTING {
+				client = nil
+				state = SSH_SERVER_CONNECTING
+				go connectSSH(b.info, connectionDone, b.progressChan)
+			}
+
+		case bark := <-wd:
+			bark <- true
 		}
 	}
 }

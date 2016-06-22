@@ -23,27 +23,3 @@ func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) 
 	}
 	return waitq, false
 }
-
-func (w *backendStruct) sshClientConnector() {
-	waitq := make([]chan net.Conn, 0)
-
-	wd := watchdog(w)
-
-	connectionDone := make(chan *ssh.Client, 100)
-	for {
-		select {
-		case reply := <-w.getConn:
-			waitq = append(waitq, reply)
-			w.getServerChan <- GetServerReq{reply: connectionDone}
-		case client := <-connectionDone:
-			if client != nil {
-				var disconnected bool
-				if waitq, disconnected = drainChildWaitq(waitq, w.info.Backend.Address, client); disconnected {
-					w.reconnectServerChan <- connectionDone
-				}
-			}
-		case bark := <-wd:
-			bark <- true
-		}
-	}
-}
