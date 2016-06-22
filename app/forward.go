@@ -26,12 +26,14 @@ func showConnectionProgress(backend backend, w http.ResponseWriter, req *http.Re
 		return false
 	}
 
-	// Not for images and those kind of stuff?
+	// TODO: Not for images and those kind of stuff?
+
+	// Only show when we're provisioning
 	if backend.IsReady() {
 		return false
 	}
 
-	serveProgressPage(w, req)
+	serveProgressPage(backend, w, req)
 	return true
 }
 

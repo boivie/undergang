@@ -1,11 +1,13 @@
 package app
 
 import (
+	"io"
+	"log"
 	"net/http"
-	"strconv"
+	"text/template"
 )
 
-var contents = []byte(`
+var contents = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,7 +34,6 @@ var contents = []byte(`
         conn.onmessage = function(evt) {
             console.log(evt)
             var payload = JSON.parse(evt.data)
-			appendLog($("<div/>").text(evt.data))
             if (payload.kind == "connection_success") {
                 window.location.reload(false);
             }
@@ -49,7 +50,7 @@ var contents = []byte(`
 */
 @import url(//fonts.googleapis.com/css?family=Lato:100,300,700);
 html {
-  background-color: #41964B;
+  background-color: {{.BackgroundColor}};
 }
 
 h1 {
@@ -230,12 +231,30 @@ h1 {
 
 <div id="log"></div>
 </body>
-</html>`)
+</html>`
 
-func serveProgressPage(w http.ResponseWriter, req *http.Request) {
-	w.Header().Add("Content-Length", strconv.Itoa(len(contents)))
+func serveProgressPage(backend backend, w http.ResponseWriter, req *http.Request) {
 	w.Header().Add("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Add("Pragma", "no-cache")
 	w.Header().Add("Expires", "0")
-	w.Write(contents)
+
+	templateVars := make(map[string]string)
+	templateVars["BackgroundColor"] = "#41964B"
+
+	info := backend.GetInfo()
+	if info.Style != nil {
+		if info.Style.BackgroundColor != "" {
+			templateVars["BackgroundColor"] = info.Style.BackgroundColor
+		}
+	}
+
+	tmpl, err := template.New("test").Parse(contents)
+	if err != nil {
+		log.Panic("Failed to parse template: %v", err)
+	}
+
+	err = tmpl.Execute(w, templateVars)
+	if err != nil {
+		io.WriteString(w, "Failed to render template")
+	}
 }
