@@ -11,8 +11,7 @@ const MAX_RETRIES_SERVER = 60 * 60
 const MAX_RETRIES_CLIENT = 60 * 60
 
 type GetServerReq struct {
-	reply          chan *ssh.Client
-	returnDirectly bool
+	reply chan *ssh.Client
 }
 
 type ConnectionDone struct {

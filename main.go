@@ -2,15 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	log "github.com/Sirupsen/logrus"
 	ug "github.com/boivie/undergang/app"
 	"github.com/codegangsta/cli"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 )
 
 func main() {
+	log.SetFormatter(&log.TextFormatter{})
+	log.SetLevel(log.DebugLevel)
 	app := cli.NewApp()
 	app.Name = "undergang"
 	app.Flags = []cli.Flag{
@@ -47,12 +49,12 @@ func main() {
 				panic(err)
 			}
 			for _, path := range config.Paths {
-				log.Printf("Adding path mapping \"%s\"\n", path.Prefix)
+				log.Infof("Adding path mapping \"%s\"", path.Prefix)
 				ug.AddPath(path)
 			}
 		}
 
-		log.Printf("Accepting requests on %s\n", c.String("listen"))
+		log.Infof("Accepting requests on %s", c.String("listen"))
 		err := http.ListenAndServe(c.String("listen"), nil)
 		if err != nil {
 			panic(err)

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"net"
 )
@@ -13,19 +14,18 @@ type backend interface {
 }
 
 const (
-	SSH_SERVER_DISCONNECTED = iota
+	SSH_SERVER_PROVISIONING = iota
+	SSH_SERVER_PROVISIONED  = iota
 	SSH_SERVER_CONNECTING   = iota
 	SSH_SERVER_CONNECTED    = iota
+	SSH_SERVER_FAILED       = iota
 )
 
 type backendStruct struct {
-	info                PathInfo
-	subscribeProgress   chan chan ProgressCmd
-	progressChan        chan ProgressCmd
-	getConn             chan chan net.Conn
-	isReadyChan         chan chan bool
-	getServerChan       chan GetServerReq
-	reconnectServerChan chan chan *ssh.Client
+	info              PathInfo
+	subscribeProgress chan chan ProgressCmd
+	getConn           chan chan net.Conn
+	isReadyChan       chan chan bool
 }
 
 func (b *backendStruct) IsReady() bool {
@@ -49,86 +49,84 @@ func (b *backendStruct) GetInfo() PathInfo {
 }
 
 func (b *backendStruct) monitor() {
-	isProvisioned := isProvisioned(&b.info)
+	log := logrus.New().WithFields(logrus.Fields{
+		"type": "backend-monitor",
+		"host": b.info.Host,
+		"path": b.info.Prefix,
+	})
+	log.Logger = logrus.StandardLogger()
+	log.Debug("Starting up")
+
+	progressChan := make(chan ProgressCmd)
+
+	go progressBroker(progressChan, b.subscribeProgress)
+
 	provisioningDone := make(chan *PathInfo)
 
-	go progressBroker(b.progressChan, b.subscribeProgress)
-	if !isProvisioned {
-		go waitProvisioning(&b.info, provisioningDone, b.progressChan)
+	state := SSH_SERVER_PROVISIONED
+	if !isProvisioned(&b.info) {
+		state = SSH_SERVER_PROVISIONING
+		go waitProvisioning(&b.info, provisioningDone, progressChan)
 	}
 
 	clientWaitQ := make([]chan net.Conn, 0)
 
-	clientConnectionDone := make(chan *ssh.Client, 100)
+	drainClientConnChan := make(chan bool, 100)
+	serverConnectionDone := make(chan *ssh.Client)
 
 	var client *ssh.Client
-	state := SSH_SERVER_DISCONNECTED
-	serverWaitQ := make([]chan *ssh.Client, 0)
 
 	wd := watchdog(b)
-
-	connectionDone := make(chan *ssh.Client)
 
 	for {
 		select {
 		case newInfo := <-provisioningDone:
+			log.Debugf("Provisioning done")
 			if newInfo != nil {
 				b.info = *newInfo
-				isProvisioned = true
-
-				// Trigger a "connect to SSH"
-				myReply := make(chan *ssh.Client, 1)
-				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly: true}
-				<-myReply
+				state = SSH_SERVER_CONNECTING
+				go connectSSH(b.info, serverConnectionDone, progressChan)
+			} else {
+				state = SSH_SERVER_FAILED
 			}
 		case reply := <-b.isReadyChan:
-			if !isProvisioned {
-				reply <- false
-			} else {
-				myReply := make(chan *ssh.Client, 1)
-				b.getServerChan <- GetServerReq{reply: myReply, returnDirectly: true}
-				client := <-myReply
-				reply <- client != nil
+			if state == SSH_SERVER_PROVISIONED {
+				// Kick-start it.
+				state = SSH_SERVER_CONNECTING
+				go connectSSH(b.info, serverConnectionDone, progressChan)
 			}
+			reply <- (state == SSH_SERVER_CONNECTED)
 		case reply := <-b.getConn:
 			clientWaitQ = append(clientWaitQ, reply)
-			b.getServerChan <- GetServerReq{reply: clientConnectionDone}
-		case client := <-clientConnectionDone:
+			if client != nil {
+				drainClientConnChan <- true
+			} else {
+				if state == SSH_SERVER_PROVISIONED && b.info.SSHTunnel != nil {
+					log.Debugf("Get first connection - connecting to SSH")
+					state = SSH_SERVER_CONNECTING
+					go connectSSH(b.info, serverConnectionDone, progressChan)
+				}
+			}
+		case <-drainClientConnChan:
 			if client != nil {
 				var disconnected bool
 				if clientWaitQ, disconnected = drainChildWaitq(clientWaitQ, b.info.Backend.Address, client); disconnected {
-					b.reconnectServerChan <- clientConnectionDone
+					// Disconnected!
+					client = nil
+					state = SSH_SERVER_CONNECTING
+					go connectSSH(b.info, serverConnectionDone, progressChan)
 				}
-			}
-		case req := <-b.getServerChan:
-			if req.returnDirectly || client != nil {
-				req.reply <- client
 			} else {
-				serverWaitQ = append(serverWaitQ, req.reply)
+				log.Printf("got clientConnectionDone but no client")
 			}
-			if client == nil && state == SSH_SERVER_DISCONNECTED && b.info.SSHTunnel != nil {
-				state = SSH_SERVER_CONNECTING
-				go connectSSH(b.info, connectionDone, b.progressChan)
-			}
-		case c := <-connectionDone:
-			client = c
+		case c := <-serverConnectionDone:
 			if c != nil {
 				state = SSH_SERVER_CONNECTED
-				for _, reply := range serverWaitQ {
-					reply <- c
-				}
-				serverWaitQ = nil
-			} else {
-				state = SSH_SERVER_DISCONNECTED
+				client = c
+				drainClientConnChan <- true
+			} else if client == nil {
+				state = SSH_SERVER_PROVISIONED
 			}
-		case reply := <-b.reconnectServerChan:
-			serverWaitQ = append(serverWaitQ, reply)
-			if state != SSH_SERVER_CONNECTING {
-				client = nil
-				state = SSH_SERVER_CONNECTING
-				go connectSSH(b.info, connectionDone, b.progressChan)
-			}
-
 		case bark := <-wd:
 			bark <- true
 		}
@@ -139,11 +137,8 @@ func NewBackend(info PathInfo) backend {
 	self := backendStruct{
 		info,
 		make(chan chan ProgressCmd),
-		make(chan ProgressCmd),
 		make(chan chan net.Conn),
 		make(chan chan bool),
-		make(chan GetServerReq),
-		make(chan chan *ssh.Client),
 	}
 
 	go self.monitor()
