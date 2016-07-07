@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -185,6 +187,13 @@ func serveProgressHtml(backend backend, w http.ResponseWriter, req *http.Request
 	// Serve custom progress file?
 	if info.ProgressPage != nil && info.ProgressPage.Filename != "" {
 		http.ServeFile(w, req, info.ProgressPage.Filename)
+	} else if info.ProgressPage != nil && info.ProgressPage.Url != "" {
+		director := func(req *http.Request) {
+			req.URL, _ = url.Parse(info.ProgressPage.Url)
+			req.Host = req.URL.Host
+		}
+		proxy := &httputil.ReverseProxy{Director: director}
+		proxy.ServeHTTP(w, req)
 	} else {
 		templateVars := make(map[string]string)
 		templateVars["BackgroundColor"] = "#41964B"
