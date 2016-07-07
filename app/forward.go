@@ -19,24 +19,6 @@ func respond(w http.ResponseWriter, req *http.Request, reply string, status int)
 	http.Error(w, reply, status)
 }
 
-func showConnectionProgress(backend backend, w http.ResponseWriter, req *http.Request) bool {
-	// Only do this for modern browsers.
-	useragent := req.Header.Get("User-Agent")
-	if !strings.Contains(useragent, "Mozilla") || isWebsocket(req) {
-		return false
-	}
-
-	// TODO: Not for images and those kind of stuff?
-
-	// Only show when we're provisioning
-	if backend.IsReady() {
-		return false
-	}
-
-	serveProgressPage(backend, w, req)
-	return true
-}
-
 func serveBasicAuth(backend backend, w http.ResponseWriter, req *http.Request) bool {
 	if authInfo := backend.GetInfo().BasicAuth; authInfo != nil {
 		authError := func() bool {
@@ -85,11 +67,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if serveProgressWebSocket(backend, w, req) {
-		return
-	}
-
-	if showConnectionProgress(backend, w, req) {
+	if serveProgress(backend, w, req) {
 		return
 	}
 

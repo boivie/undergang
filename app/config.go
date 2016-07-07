@@ -45,6 +45,11 @@ type Style struct {
 	BackgroundColor string `json:"background_color"`
 }
 
+type ProgressPage struct {
+	Style    *Style `json:"style"`
+	Filename string `json:"filename"`
+}
+
 type PathInfo struct {
 	Host         string        `json:"host"`
 	Prefix       string        `json:"prefix"`
@@ -54,7 +59,7 @@ type PathInfo struct {
 	Backend         *Backend          `json:"backend"`
 	StaticOverrides map[string]string `json:"static_overrides"`
 
-	Style *Style `json:"style"`
+	ProgressPage *ProgressPage `json:"progress_page"`
 
 	BasicAuth *BasicAuth `json:"basic_auth"`
 

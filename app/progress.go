@@ -3,8 +3,11 @@ package app
 import (
 	"encoding/json"
 	"github.com/gorilla/websocket"
+	"html/template"
+	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -42,7 +45,10 @@ func (c *connection) readPump() {
 	}()
 	c.ws.SetReadLimit(maxMessageSize)
 	c.ws.SetReadDeadline(time.Now().Add(pongWait))
-	c.ws.SetPongHandler(func(string) error { c.ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	c.ws.SetPongHandler(func(string) error {
+		c.ws.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
 	for {
 		_, _, err := c.ws.ReadMessage()
 		if err != nil {
@@ -127,4 +133,77 @@ func progressBroker(progressChan <-chan ProgressCmd, subscribeChan <-chan chan P
 			subscribers = append(subscribers, q)
 		}
 	}
+}
+
+func serveProgressScript(backend backend, w http.ResponseWriter, req *http.Request) bool {
+	if !strings.HasSuffix(req.RequestURI, "/__undergang_02648018bfd74fa5a4ed50db9bb07859_script.js") {
+		return false
+	}
+
+	w.Header().Add("Content-Length", strconv.Itoa(len(script)))
+	w.Write([]byte(script))
+
+	return true
+}
+
+func serveProgress(backend backend, w http.ResponseWriter, req *http.Request) bool {
+	if serveProgressWebSocket(backend, w, req) {
+		return true
+	}
+
+	if serveProgressScript(backend, w, req) {
+		return true
+	}
+
+	if serveProgressHtml(backend, w, req) {
+		return true
+	}
+
+	return false
+}
+
+func serveProgressHtml(backend backend, w http.ResponseWriter, req *http.Request) bool {
+	// Only do this for modern browsers.
+	useragent := req.Header.Get("User-Agent")
+	if !strings.Contains(useragent, "Mozilla") || isWebsocket(req) {
+		return false
+	}
+
+	// TODO: Not for images and those kind of stuff?
+
+	// Only show when we're provisioning
+	if backend.IsReady() {
+		return false
+	}
+
+	info := backend.GetInfo()
+	// Okey, we're the ones sending the data.
+	w.Header().Add("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Add("Pragma", "no-cache")
+	w.Header().Add("Expires", "0")
+
+	// Serve custom progress file?
+	if info.ProgressPage != nil && info.ProgressPage.Filename != "" {
+		http.ServeFile(w, req, info.ProgressPage.Filename)
+	} else {
+		templateVars := make(map[string]string)
+		templateVars["BackgroundColor"] = "#41964B"
+
+		if info.ProgressPage != nil && info.ProgressPage.Style != nil {
+			if info.ProgressPage.Style.BackgroundColor != "" {
+				templateVars["BackgroundColor"] = info.ProgressPage.Style.BackgroundColor
+			}
+		}
+
+		tmpl, err := template.New("test").Parse(contents)
+		if err != nil {
+			log.Panic("Failed to parse template: %v", err)
+		}
+
+		err = tmpl.Execute(w, templateVars)
+		if err != nil {
+			io.WriteString(w, "Failed to render template")
+		}
+	}
+	return true
 }

@@ -1,35 +1,12 @@
 package app
 
-import (
-	"io"
-	"log"
-	"net/http"
-	"text/template"
-)
-
-var contents = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<title>Preparing...</title>
-<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
-<script type="text/javascript">
-    $(function() {
+var script = `
     var conn;
-    var log = $("#log");
-    function appendLog(msg) {
-        var d = log[0]
-        var doScroll = d.scrollTop == d.scrollHeight - d.clientHeight;
-        msg.appendTo(log)
-        if (doScroll) {
-            d.scrollTop = d.scrollHeight - d.clientHeight;
-        }
-    }
     if (window["WebSocket"]) {
         var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         conn = new WebSocket(wsProtocol + "//" + window.location.hostname + ":" + window.location.port + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws");
         conn.onclose = function(evt) {
-            appendLog($("<div><b>Connection closed.</b></div>"))
+		console.log("Connection closed");
         }
         conn.onmessage = function(evt) {
             console.log(evt)
@@ -39,10 +16,17 @@ var contents = `
             }
         }
     } else {
-        appendLog($("<div><b>Your browser does not support WebSockets.</b></div>"))
+        console.log("Your browser doesn't support javascript.");
     }
-    });
-</script>
+`
+
+var contents = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Preparing...</title>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+<script src="__undergang_02648018bfd74fa5a4ed50db9bb07859_script.js"></script>
 <style type="text/css">
 /* Loader #1 by Sam Lillicrap
    http://www.samueljwebdesign.co.uk
@@ -232,29 +216,3 @@ h1 {
 <div id="log"></div>
 </body>
 </html>`
-
-func serveProgressPage(backend backend, w http.ResponseWriter, req *http.Request) {
-	w.Header().Add("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Add("Pragma", "no-cache")
-	w.Header().Add("Expires", "0")
-
-	templateVars := make(map[string]string)
-	templateVars["BackgroundColor"] = "#41964B"
-
-	info := backend.GetInfo()
-	if info.Style != nil {
-		if info.Style.BackgroundColor != "" {
-			templateVars["BackgroundColor"] = info.Style.BackgroundColor
-		}
-	}
-
-	tmpl, err := template.New("test").Parse(contents)
-	if err != nil {
-		log.Panic("Failed to parse template: %v", err)
-	}
-
-	err = tmpl.Execute(w, templateVars)
-	if err != nil {
-		io.WriteString(w, "Failed to render template")
-	}
-}
