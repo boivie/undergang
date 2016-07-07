@@ -49,6 +49,7 @@ type ProgressPage struct {
 	Style    *Style `json:"style"`
 	Filename string `json:"filename"`
 	Url      string `json:"url"`
+	Hostname string `json:"hostname"`
 }
 
 type PathInfo struct {

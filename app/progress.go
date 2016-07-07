@@ -191,6 +191,9 @@ func serveProgressHtml(backend backend, w http.ResponseWriter, req *http.Request
 		director := func(req *http.Request) {
 			req.URL, _ = url.Parse(info.ProgressPage.Url)
 			req.Host = req.URL.Host
+			if info.ProgressPage.Hostname != "" {
+				req.Host = info.ProgressPage.Hostname
+			}
 		}
 		proxy := &httputil.ReverseProxy{Director: director}
 		proxy.ServeHTTP(w, req)
