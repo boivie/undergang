@@ -4,6 +4,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"log"
+	"net"
 	"time"
 )
 
@@ -19,20 +20,56 @@ type ConnectionDone struct {
 	err    error
 }
 
-func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
-	if proxyCommand == "" {
-		return ssh.Dial(`tcp`, info.Address, config)
-	} else {
-		conn, err := connectProxy(proxyCommand, info.Address)
-		if err != nil {
-			return nil, err
-		}
-		c, chans, reqs, err := ssh.NewClientConn(conn, info.Address, config)
-		if err != nil {
-			return nil, err
-		}
-		return ssh.NewClient(c, chans, reqs), nil
+// Conn wraps a net.Conn, and sets a deadline for every read
+// and write operation.
+type Conn struct {
+	net.Conn
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
+func (c *Conn) Read(b []byte) (int, error) {
+	err := c.Conn.SetReadDeadline(time.Now().Add(c.ReadTimeout))
+	if err != nil {
+		return 0, err
 	}
+	return c.Conn.Read(b)
+}
+
+func (c *Conn) Write(b []byte) (int, error) {
+	err := c.Conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout))
+	if err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(b)
+}
+
+func directConnect(network, addr string, timeout time.Duration) (net.Conn, error) {
+	conn, err := net.DialTimeout(network, addr, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Conn{conn, timeout, timeout}, nil
+}
+
+func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
+	var conn net.Conn
+	var err error
+
+	if proxyCommand == "" {
+		conn, err = directConnect(`tcp`, info.Address, 5*time.Second)
+	} else {
+		conn, err = connectProxy(proxyCommand, info.Address)
+	}
+	if err != nil {
+		return nil, err
+	}
+	c, chans, reqs, err := ssh.NewClientConn(conn, info.Address, config)
+	if err != nil {
+		return nil, err
+	}
+	return ssh.NewClient(c, chans, reqs), nil
 }
 
 func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- ProgressCmd) {

@@ -11,11 +11,18 @@ func drainChildWaitq(waitq []chan net.Conn, address string, client *ssh.Client) 
 	for len(waitq) > 0 {
 		reply := waitq[0]
 		conn, err := client.Dial("tcp", address)
-		if err != nil && err == io.EOF {
-			// Disconnected from the SSH server.
-			return waitq, true
-		} else if err != nil {
-			log.Printf("Failed to connect to backend server at %s\n", address)
+		if err != nil {
+			if err == io.EOF {
+				// Disconnected from the SSH server.
+				return waitq, true
+			} else if err, ok := err.(net.Error); ok && err.Timeout() {
+				log.Print(err)
+				log.Printf("Timeout. Does this mean that we should recycle the connection? %v", address)
+				return waitq, true
+			} else {
+				log.Print(err)
+				log.Printf("Failed to connect to backend server at %s\n", address)
+			}
 		}
 		reply <- conn
 

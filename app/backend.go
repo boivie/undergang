@@ -4,6 +4,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"net"
+	"time"
 )
 
 type backend interface {
@@ -78,6 +79,9 @@ func (b *backendStruct) monitor() {
 
 	wd := watchdog(b)
 
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+
 	for {
 		select {
 		case newInfo := <-provisioningDone:
@@ -129,6 +133,14 @@ func (b *backendStruct) monitor() {
 			}
 		case bark := <-wd:
 			bark <- true
+
+		case <-t.C:
+			if client != nil {
+				_, _, err := client.Conn.SendRequest("keepalive@openssh.com", true, nil)
+				if err != nil {
+					log.Printf("Keepalive timed out")
+				}
+			}
 		}
 	}
 }
