@@ -36,7 +36,7 @@ func base64URLDecode(data string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(data)
 }
 
-func splitRight(b string, sep string) (left string, right string, ok bool) {
+func splitRight(b string, sep string) (string, string, bool) {
 	idx := strings.LastIndex(b, sep)
 	if idx <= -1 {
 		return "", "", false

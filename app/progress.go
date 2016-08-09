@@ -98,7 +98,7 @@ func serveProgressWebSocket(backend backend, w http.ResponseWriter, req *http.Re
 
 	ws, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
-		log.Println("Failed to upgrade: %s\n", err)
+		log.Printf("Failed to upgrade: %s", err)
 		return true
 	}
 	progress := make(chan ProgressCmd, 256)
@@ -209,7 +209,7 @@ func serveProgressHtml(backend backend, w http.ResponseWriter, req *http.Request
 
 		tmpl, err := template.New("test").Parse(contents)
 		if err != nil {
-			log.Panic("Failed to parse template: %v", err)
+			log.Panicf("Failed to parse template: %v", err)
 		}
 
 		err = tmpl.Execute(w, templateVars)
