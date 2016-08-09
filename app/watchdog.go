@@ -1,8 +1,10 @@
 package app
 
 import (
-	"fmt"
+	"bytes"
+	"log"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -13,6 +15,8 @@ func watchdog(who interface{}) chan chan bool {
 	f := runtime.FuncForPC(pc[0])
 	file, line := f.FileLine(pc[0])
 
+	goid := getGID()
+
 	m := func() {
 		for {
 			<-time.After(10 * time.Second)
@@ -21,17 +25,30 @@ func watchdog(who interface{}) chan chan bool {
 			case reqs <- reply:
 			// pass
 			default:
-				panic(fmt.Sprintf("Failed to send watchdog message from %s:%d, %v", file, line, who))
+				log.Panicf("Failed to send watchdog message to goroutine %d, %s:%d, %v", goid, file, line, who)
 			}
 			select {
 			case <-reply:
 			// pass
-			case <-time.After(1 * time.Second):
-				panic(fmt.Sprintf("Failed to receive reply from %s:%d, %v", file, line, who))
+			case <-time.After(10 * time.Second):
+				log.Panicf("Failed to receive reply from goroutine %d, %s:%d, %v", goid, file, line, who)
 			}
 		}
 	}
 
 	go m()
 	return reqs
+}
+
+// Hacky way of getting a goroutine ID.
+func getGID() uint64 {
+	b := make([]byte, 64)
+	return extractGID(b[:runtime.Stack(b, false)])
+}
+
+func extractGID(stack []byte) uint64 {
+	b := bytes.TrimPrefix(stack, []byte("goroutine "))
+	b = b[:bytes.IndexByte(b, ' ')]
+	gid, _ := strconv.ParseUint(string(b), 10, 64)
+	return gid
 }
