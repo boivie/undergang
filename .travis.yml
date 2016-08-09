@@ -11,4 +11,5 @@ script:
 - go get ./... && go build && go test ./...
 after_success:
 - gox -output "dist/{{.OS}}_{{.Arch}}_{{.Dir}}"
-- ghr --username boivie --token $GITHUB_TOKEN --replace --prerelease --debug pre-release dist/
+- if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ghr --username boivie --token $GITHUB_TOKEN --replace --prerelease --debug -c $TRAVIS_COMMIT latest dist/; fi
+- if [ "$TRAVIS_TAG" != "" ]; then ghr --username boivie --token $GITHUB_TOKEN --replace -c $TRAVIS_COMMIT $TRAVIS_TAG dist/; fi
