@@ -1,4 +1,4 @@
-FROM golang:1.9 AS builder
+FROM golang:1.8 AS builder
 
 WORKDIR /go/src/github.com/boivie/undergang
 COPY app  /go/src/github.com/boivie/undergang/app
