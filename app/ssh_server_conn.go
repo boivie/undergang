@@ -1,11 +1,12 @@
 package app
 
 import (
-	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"log"
 	"net"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 const MAX_RETRIES_SERVER = 60 * 60
@@ -72,6 +73,10 @@ func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*s
 	return ssh.NewClient(c, chans, reqs), nil
 }
 
+func acceptAllHostKeys(hostname string, remote net.Addr, key ssh.PublicKey) error {
+	return nil
+}
+
 func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- ProgressCmd) {
 	var err error
 	log.Printf("SSH-connecting to %s\n", info.SSHTunnel.Address)
@@ -99,6 +104,7 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(key),
 		},
+		HostKeyCallback: acceptAllHostKeys,
 	}
 
 	currentRetriesServer := 0
