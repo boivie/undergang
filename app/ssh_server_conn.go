@@ -105,6 +105,7 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 			ssh.PublicKeys(key),
 		},
 		HostKeyCallback: acceptAllHostKeys,
+		Timeout:         10 * time.Second,
 	}
 
 	currentRetriesServer := 0
