@@ -125,6 +125,7 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 			progress <- ProgressCmd{"connection_retry", nil}
 			time.Sleep(1 * time.Second)
 		} else {
+			log.Println(`SSH connection limit reached. Aborting`)
 			progress <- ProgressCmd{"connection_failed", "Connection retry limit reached"}
 			resp <- nil
 			return
@@ -153,17 +154,20 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 	progress <- ProgressCmd{"waiting_backend", nil}
 	currentRetriesClient := 0
 	for {
+		log.Printf("Trying to connect to %s...\n", info.Backend.Address)
 		if conn, err := sshClientConn.Dial("tcp", info.Backend.Address); err == nil {
+			log.Printf("Connected to %s successfully!\n", info.Backend.Address)
 			conn.Close()
 			break
 		}
 		currentRetriesClient++
 
 		if currentRetriesClient < (MAX_RETRIES_CLIENT / 5) {
-			log.Println(`Retry...`)
+			log.Printf("Failed to connect to %s - retrying...\n", info.Backend.Address)
 			progress <- ProgressCmd{"waiting_backend_retry", nil}
 			time.Sleep(5 * time.Second)
 		} else {
+			log.Printf("Connection limit to %s reached. Aborting.\n", info.Backend.Address)
 			progress <- ProgressCmd{"waiting_backend_timeout", "Connection retry limit reached"}
 			resp <- nil
 			return
