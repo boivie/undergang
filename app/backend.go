@@ -49,6 +49,20 @@ func (b *backendStruct) GetInfo() PathInfo {
 	return b.info
 }
 
+func generateKeepalive(client *ssh.Client) {
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			<-t.C
+			_, _, err := client.Conn.SendRequest("keepalive@openssh.com", true, nil)
+			if err != nil {
+				return
+			}
+		}
+	}()
+}
+
 func (b *backendStruct) monitor() {
 	log := logrus.New().WithFields(logrus.Fields{
 		"type": "backend-monitor",
@@ -78,9 +92,6 @@ func (b *backendStruct) monitor() {
 	var client *ssh.Client
 
 	wd := watchdog(b)
-
-	t := time.NewTicker(2 * time.Second)
-	defer t.Stop()
 
 	for {
 		select {
@@ -127,20 +138,13 @@ func (b *backendStruct) monitor() {
 			if c != nil {
 				state = SSH_SERVER_CONNECTED
 				client = c
+				generateKeepalive(c)
 				drainClientConnChan <- true
 			} else if client == nil {
 				state = SSH_SERVER_PROVISIONED
 			}
 		case bark := <-wd:
 			bark <- true
-
-		case <-t.C:
-			if client != nil {
-				_, _, err := client.Conn.SendRequest("keepalive@openssh.com", true, nil)
-				if err != nil {
-					log.Printf("Keepalive timed out")
-				}
-			}
 		}
 	}
 }
