@@ -162,7 +162,8 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 	currentRetriesClient := 0
 	for {
 		log.Printf("Trying to connect to %s...\n", info.Backend.Address)
-		if conn, err := sshClientConn.Dial("tcp", info.Backend.Address); err == nil {
+		var conn net.Conn
+		if conn, err = sshClientConn.Dial("tcp", info.Backend.Address); err == nil {
 			log.Printf("Connected to %s successfully!\n", info.Backend.Address)
 			conn.Close()
 			break
