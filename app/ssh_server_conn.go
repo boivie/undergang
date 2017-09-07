@@ -2,9 +2,10 @@ package app
 
 import (
 	"io/ioutil"
-	"log"
 	"net"
 	"time"
+
+	"github.com/Sirupsen/logrus"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -79,6 +80,12 @@ func acceptAllHostKeys(hostname string, remote net.Addr, key ssh.PublicKey) erro
 
 func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- ProgressCmd) {
 	var err error
+	log := logrus.New().WithFields(logrus.Fields{
+		"type": "ssh-server-conn",
+		"host": info.Host,
+		"path": info.Prefix,
+	})
+
 	log.Printf("SSH-connecting to %s\n", info.SSHTunnel.Address)
 
 	progress <- ProgressCmd{"connection_start", nil}
@@ -163,7 +170,7 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 		currentRetriesClient++
 
 		if currentRetriesClient < (MAX_RETRIES_CLIENT / 5) {
-			log.Printf("Failed to connect to %s - retrying...\n", info.Backend.Address)
+			log.Printf("Failed to connect to %s - %v, retrying...\n", info.Backend.Address, err)
 			progress <- ProgressCmd{"waiting_backend_retry", nil}
 			time.Sleep(5 * time.Second)
 		} else {
