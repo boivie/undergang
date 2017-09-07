@@ -1,6 +1,7 @@
 package app
 
 import (
+	"io"
 	"io/ioutil"
 	"net"
 	"time"
@@ -86,8 +87,6 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 		"path": info.Prefix,
 	})
 
-	log.Printf("SSH-connecting to %s\n", info.SSHTunnel.Address)
-
 	progress <- ProgressCmd{"connection_start", nil}
 	sshKey := []byte(info.SSHTunnel.SSHKeyContents)
 	if info.SSHTunnel.SSHKeyFileName != "" {
@@ -118,6 +117,8 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 	currentRetriesServer := 0
 	var sshClientConn *ssh.Client
 
+reconnect:
+	log.Printf("SSH-connecting to %s\n", info.SSHTunnel.Address)
 	for {
 		progress <- ProgressCmd{"connection_try", nil}
 		if sshClientConn, err = dialSSH(info.SSHTunnel, config, proxyCommand); err == nil {
@@ -167,6 +168,14 @@ func connectSSH(info PathInfo, resp chan<- *ssh.Client, progress chan<- Progress
 			log.Printf("Connected to %s successfully!\n", info.Backend.Address)
 			conn.Close()
 			break
+		} else if err == io.EOF {
+			log.Printf("Disconnected from SSH server while connecting to %s: %v - re-connecting SSH\n", info.Backend.Address, err)
+			time.Sleep(1 * time.Second)
+			goto reconnect
+		} else if err, ok := err.(net.Error); ok && err.Timeout() {
+			log.Printf("Timeout connecting to %s: %v - re-connecting SSH\n", info.Backend.Address, err)
+			time.Sleep(1 * time.Second)
+			goto reconnect
 		}
 		currentRetriesClient++
 
