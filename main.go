@@ -13,6 +13,15 @@ import (
 func main() {
 	log.SetFormatter(&log.TextFormatter{})
 	log.SetLevel(log.DebugLevel)
+
+	log.Info(`
+                __
+.--.--.-----.--|  |.-----.----.-----.---.-.-----.-----.
+|  |  |     |  _  ||  -__|   _|  _  |  _  |     |  _  |
+|_____|__|__|_____||_____|__| |___  |___._|__|__|___  |
+                              |_____|           |_____|
+`)
+
 	app := cli.NewApp()
 	app.Name = "undergang"
 	app.Flags = []cli.Flag{
