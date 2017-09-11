@@ -19,7 +19,7 @@ func (wrp *WebsocketReverseProxy) ServeHTTP(rw http.ResponseWriter, origReq *htt
 
 	d, err := wrp.Dial("tcp", req.URL.Host)
 	if err != nil {
-		http.Error(rw, "Error connecting to backend", http.StatusInternalServerError)
+		http.Error(rw, "Error connecting to backend", http.StatusServiceUnavailable)
 		log.Printf("Error dialing websocket backend %s: %v", req.URL, err)
 		return
 	}

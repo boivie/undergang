@@ -77,7 +77,7 @@ func Forward(w http.ResponseWriter, req *http.Request) {
 
 	conn := backend.Connect()
 	if conn == nil {
-		respond(w, req, "Couldn't connect to backend server", http.StatusInternalServerError)
+		respond(w, req, "Couldn't connect to backend server", http.StatusServiceUnavailable)
 		return
 	}
 
