@@ -5,8 +5,8 @@ COPY app  /go/src/github.com/boivie/undergang/app
 COPY main.go  /go/src/github.com/boivie/undergang/
 
 RUN go get -d -v
-ARG CACHE_TAG=latest
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "-X main.version=${CACHE_TAG}" .
+ARG UNDERGANG_VERSION=latest
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "-X main.version=${UNDERGANG_VERSION}" .
 
 FROM alpine:latest
 
