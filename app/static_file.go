@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func serveStatic(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveStatic(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	if backend.GetInfo().StaticOverrides != nil {
 		url := backend.GetInfo().Backend.BasePath + strings.TrimPrefix(req.URL.Path, backend.GetInfo().Prefix)
 		if contents, ok := backend.GetInfo().StaticOverrides[url]; ok {

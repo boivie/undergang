@@ -2,6 +2,8 @@ package app
 
 import (
 	"strings"
+
+	"github.com/Sirupsen/logrus"
 )
 
 type addPathReq struct {
@@ -12,7 +14,11 @@ type addPathReq struct {
 type lookupReq struct {
 	host  string
 	path  string
-	reply chan backend
+	reply chan Backend
+}
+
+type unregisterReq struct {
+	id int
 }
 
 type mappingkey struct {
@@ -20,8 +26,9 @@ type mappingkey struct {
 	prefix string
 }
 
-var addPathChan chan addPathReq = make(chan addPathReq)
-var lookupChan chan lookupReq = make(chan lookupReq)
+var addPathChan = make(chan addPathReq)
+var lookupChan = make(chan lookupReq)
+var unregisterChan = make(chan unregisterReq)
 
 func AddPath(info PathInfo) {
 	reply := make(chan error)
@@ -29,15 +36,19 @@ func AddPath(info PathInfo) {
 	<-reply
 }
 
-func LookupBackend(host, path string) backend {
-	reply := make(chan backend)
+func LookupBackend(host, path string) Backend {
+	reply := make(chan Backend)
 	lookupChan <- lookupReq{host, path, reply}
 	return <-reply
 }
 
-func lookupPath(mapping map[mappingkey]backend, host, path string) backend {
+func UnregisterBackend(id int) {
+	unregisterChan <- unregisterReq{id}
+}
+
+func lookupPath(mapping map[mappingkey]Backend, host, path string) Backend {
 	var bestPrefix string
-	var bestBackend backend
+	var bestBackend Backend
 	// Find exact match on host first
 	for mapkey, backend := range mapping {
 		if mapkey.host == host && strings.HasPrefix(path, mapkey.prefix) {
@@ -63,7 +74,12 @@ func lookupPath(mapping map[mappingkey]backend, host, path string) backend {
 }
 
 func backendManager() {
-	var mapping map[mappingkey]backend = make(map[mappingkey]backend)
+	log := logrus.New().WithFields(logrus.Fields{
+		"type": "manager",
+	})
+	log.Logger = logrus.StandardLogger()
+
+	mapping := make(map[mappingkey]Backend)
 	externalLookupReq := make(chan lookupReq, 100)
 	externalLookupResp := make(chan externalLookupResp, 100)
 
@@ -73,10 +89,26 @@ func backendManager() {
 		}
 	}
 
+	var currentID = 0
+
+	addBackend := func(info PathInfo) Backend {
+		key := mappingkey{info.Host, info.Prefix}
+		// There can be a race when we have multiple external look-ups ongoing
+		if existing, ok := mapping[key]; ok {
+			return existing
+		}
+
+		currentID++
+		backend := NewBackend(currentID, info)
+		log.Infof("Adding backend %d -> '%s%s'", currentID, info.Host, info.Prefix)
+		mapping[key] = backend
+		return backend
+	}
+
 	for {
 		select {
 		case req := <-addPathChan:
-			mapping[mappingkey{req.info.Host, req.info.Prefix}] = NewBackend(req.info)
+			addBackend(req.info)
 			req.reply <- nil
 
 		case msg := <-lookupChan:
@@ -85,17 +117,28 @@ func backendManager() {
 			if ret == nil && externalLookupUrl != "" {
 				externalLookupReq <- msg
 			} else {
+				if ret != nil {
+					ret.Start()
+				}
 				msg.reply <- ret
 			}
 
 		case msg := <-externalLookupResp:
 			// Route replies to the client, while updating our mapping table as a cache
-			var backend backend
+			var backend Backend
 			if msg.info != nil {
-				backend = NewBackend(*msg.info)
-				mapping[mappingkey{msg.info.Host, msg.info.Prefix}] = backend
+				backend = addBackend(*msg.info)
+				backend.Start()
 			}
 			msg.req.reply <- backend
+
+		case req := <-unregisterChan:
+			for mapkey, backend := range mapping {
+				if backend.ID() == req.id {
+					log.Infof("Removing backend %d -> '%s%s'", req.id, backend.GetInfo().Host, backend.GetInfo().Prefix)
+					delete(mapping, mapkey)
+				}
+			}
 		}
 	}
 }

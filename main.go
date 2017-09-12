@@ -2,12 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	log "github.com/Sirupsen/logrus"
-	ug "github.com/boivie/undergang/app"
-	"github.com/codegangsta/cli"
 	"io/ioutil"
 	"net/http"
 	"os"
+
+	log "github.com/Sirupsen/logrus"
+	ug "github.com/boivie/undergang/app"
+	"github.com/codegangsta/cli"
 )
 
 func main() {
@@ -58,7 +59,6 @@ func main() {
 				panic(err)
 			}
 			for _, path := range config.Paths {
-				log.Infof("Adding path mapping \"%s\"", path.Prefix)
 				ug.AddPath(path)
 			}
 		}

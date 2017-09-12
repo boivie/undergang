@@ -1,38 +1,49 @@
 package app
 
 import (
+	"errors"
+	"io"
+	"io/ioutil"
+	"net"
+	"os"
+	"time"
+
 	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
-	"net"
-	"time"
 )
 
-type backend interface {
+// Backend represents a tunnel to an app reached by a SSH tunnel
+type Backend interface {
+	ID() int
+	Start()
 	IsReady() bool
 	Connect() net.Conn
 	GetInfo() PathInfo
 	Subscribe(chan ProgressCmd)
 }
 
-const (
-	SSH_SERVER_PROVISIONING = iota
-	SSH_SERVER_PROVISIONED  = iota
-	SSH_SERVER_CONNECTING   = iota
-	SSH_SERVER_CONNECTED    = iota
-	SSH_SERVER_FAILED       = iota
-)
-
 type backendStruct struct {
+	id                int
 	info              PathInfo
+	log               *logrus.Entry
 	subscribeProgress chan chan ProgressCmd
 	getConn           chan chan net.Conn
-	isReadyChan       chan chan bool
+	progress          chan ProgressCmd
+	start             chan bool
+	isReady           bool
+	sshConfig         *ssh.ClientConfig
+}
+
+func (b *backendStruct) ID() int {
+	return b.id
+}
+
+func (b *backendStruct) Start() {
+	b.start <- true
 }
 
 func (b *backendStruct) IsReady() bool {
-	reply := make(chan bool, 1)
-	b.isReadyChan <- reply
-	return <-reply
+	return b.isReady
 }
 
 func (b *backendStruct) Connect() net.Conn {
@@ -49,6 +60,9 @@ func (b *backendStruct) GetInfo() PathInfo {
 	return b.info
 }
 
+const maxRetriesServer = 15 * 60
+const maxRetriesClient = (10 * 60 / 5)
+
 func generateKeepalive(client *ssh.Client) {
 	go func() {
 		t := time.NewTicker(2 * time.Second)
@@ -63,100 +77,314 @@ func generateKeepalive(client *ssh.Client) {
 	}()
 }
 
-func (b *backendStruct) monitor() {
-	log := logrus.New().WithFields(logrus.Fields{
-		"type": "backend-monitor",
-		"host": b.info.Host,
-		"path": b.info.Prefix,
-	})
-	log.Logger = logrus.StandardLogger()
-	log.Debug("Starting up")
+func (b *backendStruct) isProvisioned() bool {
+	return b.info.Provisioning == nil || b.info.Provisioning.Status != "started"
+}
 
-	progressChan := make(chan ProgressCmd)
+func (b *backendStruct) waitProvisioned() error {
+	if !b.isProvisioned() {
+		b.progress <- ProgressCmd{"wait_provisioning_start", nil}
+		for {
+			newInfo := doLookup(b.info.Host, b.info.Prefix)
+			if newInfo == nil {
+				// TODO: Retry?
+				return errors.New("Failed to get info from backend")
+			}
+			b.info = *newInfo
+			if b.isProvisioned() {
+				break
+			}
+			b.log.Info("Provisioning - retry...")
+			time.Sleep(5 * time.Second)
+		}
+		b.log.Info("Provisioning completed")
+		b.progress <- ProgressCmd{"wait_provisioning_end", nil}
+	}
+	return nil
+}
 
-	go progressBroker(progressChan, b.subscribeProgress)
+func (b *backendStruct) failed(reason string, err error) {
+	b.log.Warnf("ENTER FAILED STATE, due to %s: %v", reason, err)
+	// lame duck mode.
+	UnregisterBackend(b.id)
+	for {
+		reply := <-b.getConn
+		reply <- nil
+	}
+}
 
-	provisioningDone := make(chan *PathInfo)
+func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
+	var conn net.Conn
+	var err error
 
-	state := SSH_SERVER_PROVISIONED
-	if !isProvisioned(&b.info) {
-		state = SSH_SERVER_PROVISIONING
-		go waitProvisioning(&b.info, provisioningDone, progressChan)
+	if proxyCommand == "" {
+		conn, err = net.DialTimeout(`tcp`, info.Address, 10*time.Second)
+	} else {
+		conn, err = connectProxy(proxyCommand, info.Address)
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	clientWaitQ := make([]chan net.Conn, 0)
+	c, chans, reqs, err := ssh.NewClientConn(conn, info.Address, config)
+	if err != nil {
+		return nil, err
+	}
+	return ssh.NewClient(c, chans, reqs), nil
+}
 
-	drainClientConnChan := make(chan bool, 100)
-	serverConnectionDone := make(chan *ssh.Client)
+func (b *backendStruct) connectSSH() (client *ssh.Client, err error) {
+	b.progress <- ProgressCmd{"connection_start", nil}
+	b.log.Info("Connecting to SSH server")
+	for retry := 0; retry < maxRetriesServer; retry++ {
+		b.progress <- ProgressCmd{"connection_try", nil}
+		client, err = dialSSH(b.info.SSHTunnel, b.sshConfig, proxyCommand)
+		if err == nil {
+			b.log.Infof("Connected to SSH server: %v, err %v", client, err)
+			go generateKeepalive(client)
+			b.progress <- ProgressCmd{"connection_established", nil}
+			return
+		}
 
-	var client *ssh.Client
+		b.log.Warnf("SSH Connection failed: %v - retrying", err)
+		b.progress <- ProgressCmd{"connection_retry", nil}
+		time.Sleep(1 * time.Second)
+	}
+	b.log.Warnf("SSH Connection retry limit reached")
+	b.progress <- ProgressCmd{"connection_failed", "Connection retry limit reached"}
+	return nil, errors.New("SSH Connection retry limit reached")
+}
 
-	wd := watchdog(b)
+func (b *backendStruct) reconnectSSH() (client *ssh.Client, err error) {
+	b.progress <- ProgressCmd{"reconnection_start", nil}
+	b.log.Info("Re-connecting to SSH server")
+	client, err = dialSSH(b.info.SSHTunnel, b.sshConfig, proxyCommand)
+	if err == nil {
+		b.log.Infof("Re-connected to SSH server: %v, err %v", client, err)
+		go generateKeepalive(client)
+		b.progress <- ProgressCmd{"reconnection_established", nil}
+		return
+	}
+
+	b.log.Warnf("SSH Re-connection failed. Assuming host is down.")
+	b.progress <- ProgressCmd{"reconnection_failed", "Re-connection failed"}
+	return nil, err
+}
+
+func (b *backendStruct) bootstrap(client *ssh.Client) (err error) {
+	type BootstrapStep struct {
+		Description string `json:"description"`
+		Status      string `json:"status"`
+	}
+	status := struct {
+		Steps []BootstrapStep `json:"steps"`
+	}{make([]BootstrapStep, 0)}
+
+	for _, cmd := range b.info.SSHTunnel.Bootstrap {
+		status.Steps = append(status.Steps, BootstrapStep{cmd.Description, ""})
+	}
+
+	var session *ssh.Session
+	for idx, cmd := range b.info.SSHTunnel.Bootstrap {
+		b.log.Infof("Started running bootstrap '%s'", cmd.Command)
+		status.Steps[idx].Status = "started"
+		b.progress <- ProgressCmd{"bootstrap_status", status}
+		if session, err = client.NewSession(); err != nil {
+			return
+		}
+		defer session.Close()
+		session.Stdout = os.Stdout
+		session.Stderr = os.Stderr
+		session.Run(cmd.Command)
+		status.Steps[idx].Status = "done"
+		b.progress <- ProgressCmd{"bootstrap_status", status}
+		b.log.Infof("Finished running bootstrap '%s'", cmd.Command)
+	}
+
+	if b.info.SSHTunnel.Run != nil {
+		if session, err = client.NewSession(); err != nil {
+			return
+		}
+		defer session.Close()
+		modes := ssh.TerminalModes{
+			ssh.ECHO: 0,
+		}
+
+		if err = session.RequestPty("xterm", 80, 40, modes); err != nil {
+			b.log.Warnf("request for pseudo terminal failed: %s", err)
+			return
+		}
+
+		session.Start(b.info.SSHTunnel.Run.Command)
+		time.Sleep(500 * time.Millisecond)
+	}
+	return
+}
+
+func acceptAllHostKeys(hostname string, remote net.Addr, key ssh.PublicKey) error {
+	return nil
+}
+
+func (b *backendStruct) prepareSSH() (err error) {
+	sshKey := []byte(b.info.SSHTunnel.SSHKeyContents)
+	if b.info.SSHTunnel.SSHKeyFileName != "" {
+		sshKey, err = ioutil.ReadFile(b.info.SSHTunnel.SSHKeyFileName)
+		if err != nil {
+			b.progress <- ProgressCmd{"connection_failed", "Failed to read SSH key"}
+			return
+		}
+	}
+
+	key, err := ssh.ParsePrivateKey(sshKey)
+	if err != nil {
+		b.progress <- ProgressCmd{"connection_failed", "Failed to parse SSH key"}
+		return
+	}
+
+	b.sshConfig = &ssh.ClientConfig{
+		User: b.info.SSHTunnel.Username,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(key),
+		},
+		HostKeyCallback: acceptAllHostKeys,
+	}
+	return
+}
+
+func (b *backendStruct) connectionCreator(client *ssh.Client, onError chan error) {
+	putBack := func(reply chan net.Conn) {
+		select {
+		case b.getConn <- reply:
+		default:
+			reply <- nil
+		}
+	}
 
 	for {
-		select {
-		case newInfo := <-provisioningDone:
-			log.Debugf("Provisioning done")
-			if newInfo != nil {
-				b.info = *newInfo
-				state = SSH_SERVER_CONNECTING
-				go connectSSH(b.info, serverConnectionDone, progressChan)
+		reply := <-b.getConn
+		conn, err := client.Dial("tcp", b.info.Backend.Address)
+		if err != nil {
+			if err == io.EOF {
+				// Disconnected from the SSH server.
+				putBack(reply)
+				onError <- err
+				return
+			} else if err2, ok := err.(net.Error); ok && err2.Timeout() {
+				putBack(reply)
+				onError <- err2
+				return
 			} else {
-				state = SSH_SERVER_FAILED
+				conn = nil
 			}
-		case reply := <-b.isReadyChan:
-			if state == SSH_SERVER_PROVISIONED {
-				// Kick-start it.
-				state = SSH_SERVER_CONNECTING
-				go connectSSH(b.info, serverConnectionDone, progressChan)
-			}
-			reply <- (state == SSH_SERVER_CONNECTED)
-		case reply := <-b.getConn:
-			clientWaitQ = append(clientWaitQ, reply)
-			if client != nil {
-				drainClientConnChan <- true
-			} else {
-				if state == SSH_SERVER_PROVISIONED && b.info.SSHTunnel != nil {
-					log.Debugf("Get first connection - connecting to SSH")
-					state = SSH_SERVER_CONNECTING
-					go connectSSH(b.info, serverConnectionDone, progressChan)
-				}
-			}
-		case <-drainClientConnChan:
-			if client != nil {
-				var disconnected bool
-				if clientWaitQ, disconnected = drainChildWaitq(clientWaitQ, b.info.Backend.Address, client); disconnected {
-					// Disconnected!
-					client = nil
-					state = SSH_SERVER_CONNECTING
-					go connectSSH(b.info, serverConnectionDone, progressChan)
-				}
-			} else {
-				log.Printf("got clientConnectionDone but no client")
-			}
-		case c := <-serverConnectionDone:
-			if c != nil {
-				state = SSH_SERVER_CONNECTED
-				client = c
-				generateKeepalive(c)
-				drainClientConnChan <- true
-			} else if client == nil {
-				state = SSH_SERVER_PROVISIONED
-			}
-		case bark := <-wd:
-			bark <- true
+		}
+		reply <- conn
+	}
+}
+
+func (b *backendStruct) waitBackend(client *ssh.Client) (err error) {
+	b.progress <- ProgressCmd{"waiting_backend", nil}
+	for retries := 0; retries < maxRetriesClient; retries++ {
+		b.log.Info("Waiting for backend to be ready...")
+		var conn net.Conn
+		if conn, err = client.Dial("tcp", b.info.Backend.Address); err == nil {
+			defer conn.Close()
+			b.log.Info("Backend is ready.")
+			b.progress <- ProgressCmd{"connection_success", nil}
+			return
+		} else if err == io.EOF {
+			b.log.Warnf("Disconnected from SSH server while connecting to %s: %v - re-connecting SSH", b.info.Backend.Address, err)
+			return
+		} else if err2, ok := err.(net.Error); ok && err2.Timeout() {
+			b.log.Warnf("Timeout connecting to %s: %v - re-connecting SSH", b.info.Backend.Address, err)
+			return
+		}
+
+		b.log.Warnf("Backend not ready yet. (%v)", err)
+		b.progress <- ProgressCmd{"waiting_backend_retry", nil}
+		time.Sleep(5 * time.Second)
+	}
+	b.log.Warn("Waiting backend retry limit reached. Aborting.")
+	b.progress <- ProgressCmd{"waiting_backend_timeout", "Connection retry limit reached"}
+	err = errors.New("Backend retry limit reached")
+	return
+}
+
+func (b *backendStruct) waitUntilStarted() {
+	<-b.start
+	b.log.Info("Woke up")
+	// Just a goroutine that eats up all future start calls.
+	go func() {
+		for range b.start {
+		}
+	}()
+}
+
+func (b *backendStruct) monitor() {
+	var client *ssh.Client
+	var err error
+
+	b.log = b.log.WithFields(logrus.Fields{
+		"ssh_host": b.info.SSHTunnel.Address,
+		"backend":  b.info.Backend.Address,
+	})
+
+	// Don't connect until we get our initial connection attempt.
+	b.waitUntilStarted()
+
+	if err = b.waitProvisioned(); err != nil {
+		b.failed("Failed to provision", err)
+	}
+
+	if err = b.prepareSSH(); err != nil {
+		b.failed("Failed to prepare SSH connection", err)
+	}
+
+	if client, err = b.connectSSH(); err != nil {
+		b.failed("Failed to do initial SSH connection", err)
+	}
+
+	if err = b.bootstrap(client); err != nil {
+		b.failed("Failed to bootstrap", err)
+	}
+
+	if err = b.waitBackend(client); err != nil {
+		b.failed("Failed waiting for backend", err)
+	}
+	b.isReady = true
+
+	connectionError := make(chan error)
+	for {
+		go b.connectionCreator(client, connectionError)
+		err = <-connectionError
+		b.log.Warnf("Connection error: %v - reconnecting", err)
+		if client, err = b.reconnectSSH(); err != nil {
+			b.failed("Failed to reconnect", err)
 		}
 	}
 }
 
-func NewBackend(info PathInfo) backend {
-	self := backendStruct{
-		info,
-		make(chan chan ProgressCmd),
-		make(chan chan net.Conn),
-		make(chan chan bool),
-	}
+// NewBackend instantiates a new backend
+func NewBackend(id int, info PathInfo) Backend {
+	log := logrus.New().WithFields(logrus.Fields{
+		"type": "backend",
+		"id":   id,
+		"host": info.Host,
+		"path": info.Prefix,
+	})
+	log.Logger = logrus.StandardLogger()
 
+	self := backendStruct{
+		id,
+		info,
+		log,
+		make(chan chan ProgressCmd),
+		make(chan chan net.Conn, 1000),
+		make(chan ProgressCmd),
+		make(chan bool),
+		false,
+		nil,
+	}
+	go progressBroker(self.progress, self.subscribeProgress)
 	go self.monitor()
 
 	return &self

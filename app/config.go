@@ -15,7 +15,7 @@ type SSHTunnel struct {
 	Run       *Command  `json:"run"`
 }
 
-type Backend struct {
+type ConfigBackend struct {
 	Address  string `json:"address"`
 	BasePath string `json:"base_path"`
 }
@@ -58,7 +58,7 @@ type PathInfo struct {
 	Provisioning *Provisioning `json:"provisioning"`
 	SSHTunnel    *SSHTunnel    `json:"ssh_tunnel"`
 
-	Backend         *Backend          `json:"backend"`
+	Backend         *ConfigBackend    `json:"backend"`
 	StaticOverrides map[string]string `json:"static_overrides"`
 
 	ProgressPage *ProgressPage `json:"progress_page"`

@@ -27,5 +27,5 @@ func Init(externalPathLookupUrl_ string, accessLookupUrl string, proxyCommand_ s
 
 	http.HandleFunc("/__ug__dump", dumpHandler)
 	http.HandleFunc("/__ug__health", healthHandler)
-	http.HandleFunc("/", Forward)
+	http.HandleFunc("/", forward)
 }

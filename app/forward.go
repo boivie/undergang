@@ -19,7 +19,7 @@ func respond(w http.ResponseWriter, req *http.Request, reply string, status int)
 	http.Error(w, reply, status)
 }
 
-func serveBasicAuth(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveBasicAuth(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	if authInfo := backend.GetInfo().BasicAuth; authInfo != nil {
 		authError := func() bool {
 			w.Header().Set("WWW-Authenticate", "Basic realm=\"Restricted Access\"")
@@ -45,7 +45,7 @@ func serveBasicAuth(backend backend, w http.ResponseWriter, req *http.Request) b
 	return false
 }
 
-func Forward(w http.ResponseWriter, req *http.Request) {
+func forward(w http.ResponseWriter, req *http.Request) {
 	log.Printf("%s %s%s", req.Method, req.Host, req.URL.Path)
 	backend := LookupBackend(req.Host, req.URL.Path)
 	if backend == nil {

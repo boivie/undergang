@@ -2,7 +2,6 @@ package app
 
 import (
 	"encoding/json"
-	"github.com/gorilla/websocket"
 	"html/template"
 	"io"
 	"log"
@@ -12,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type ProgressCmd struct {
@@ -91,7 +92,7 @@ func (c *connection) writePump() {
 	}
 }
 
-func serveProgressWebSocket(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressWebSocket(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	if !strings.HasSuffix(req.RequestURI, "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws") {
 		return false
 	}
@@ -137,7 +138,7 @@ func progressBroker(progressChan <-chan ProgressCmd, subscribeChan <-chan chan P
 	}
 }
 
-func serveProgressScript(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressScript(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	if !strings.HasSuffix(req.RequestURI, "/__undergang_02648018bfd74fa5a4ed50db9bb07859_script.js") {
 		return false
 	}
@@ -148,7 +149,7 @@ func serveProgressScript(backend backend, w http.ResponseWriter, req *http.Reque
 	return true
 }
 
-func serveProgress(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgress(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	if serveProgressWebSocket(backend, w, req) {
 		return true
 	}
@@ -164,7 +165,7 @@ func serveProgress(backend backend, w http.ResponseWriter, req *http.Request) bo
 	return false
 }
 
-func serveProgressHtml(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressHtml(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	// Only do this for modern browsers.
 	useragent := req.Header.Get("User-Agent")
 	if !strings.Contains(useragent, "Mozilla") || isWebsocket(req) {

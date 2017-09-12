@@ -3,11 +3,12 @@ package app
 import (
 	"crypto/sha1"
 	"fmt"
-	"github.com/franela/goreq"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/franela/goreq"
 )
 
 const SERVER_AUTH_ENDPOINT = "/__undergang_02648018bfd74fa5a4ed50db9bb07859_auth"
@@ -18,7 +19,7 @@ func getCookieToken(info PathInfo) string {
 	return base64URLEncode([]byte(info.Host + "/" + info.Prefix))
 }
 
-func serveValidateServerAuth(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveValidateServerAuth(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	info := backend.GetInfo()
 	serverAuth := info.ServerAuth
 
@@ -86,7 +87,7 @@ func getScheme(r *http.Request) string {
 	return "http"
 }
 
-func serveServerAuth(backend backend, w http.ResponseWriter, req *http.Request) bool {
+func serveServerAuth(backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	serverAuth := backend.GetInfo().ServerAuth
 
 	if serverAuth == nil {
