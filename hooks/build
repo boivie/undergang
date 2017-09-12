@@ -1,3 +1,4 @@
 #!/bin/bash
 
+env
 docker build --build-arg UNDERGANG_VERSION=$CACHE_TAG -t $IMAGE_NAME .
