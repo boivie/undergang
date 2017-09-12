@@ -8,7 +8,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	ug "github.com/boivie/undergang/app"
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 var version string = "(locally built)"
