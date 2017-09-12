@@ -11,20 +11,15 @@ import (
 	"github.com/codegangsta/cli"
 )
 
+var version string = "(locally built)"
+
 func main() {
 	log.SetFormatter(&log.TextFormatter{})
 	log.SetLevel(log.DebugLevel)
 
-	log.Info(`
-                __
-.--.--.-----.--|  |.-----.----.-----.---.-.-----.-----.
-|  |  |     |  _  ||  -__|   _|  _  |  _  |     |  _  |
-|_____|__|__|_____||_____|__| |___  |___._|__|__|___  |
-                              |_____|           |_____|
-`)
-
 	app := cli.NewApp()
 	app.Name = "undergang"
+	app.Version = version
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "listen",
@@ -45,6 +40,15 @@ func main() {
 		},
 	}
 	app.Action = func(c *cli.Context) {
+		log.Info(`
+                __
+.--.--.-----.--|  |.-----.----.-----.---.-.-----.-----.
+|  |  |     |  _  ||  -__|   _|  _  |  _  |     |  _  |
+|_____|__|__|_____||_____|__| |___  |___._|__|__|___  |
+                              |_____|           |_____|
+`)
+		log.Info("version " + version)
+
 		ug.Init(c.String("pathinfo"), c.String("access"), c.String("sshproxy"))
 
 		if c.String("config") != "" {
