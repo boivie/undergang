@@ -207,10 +207,11 @@ func (b *backendStruct) bootstrap(client *ssh.Client) (err error) {
 	}
 
 	if b.info.SSHTunnel.Run != nil {
+		b.log.Info("Running command: '%s'", b.info.SSHTunnel.Run.Command)
 		if session, err = client.NewSession(); err != nil {
 			return
 		}
-		defer session.Close()
+
 		modes := ssh.TerminalModes{
 			ssh.ECHO: 0,
 		}
