@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"html/template"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 )
 
@@ -92,14 +92,14 @@ func (c *connection) writePump() {
 	}
 }
 
-func serveProgressWebSocket(backend Backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressWebSocket(log *logrus.Entry, backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	if !strings.HasSuffix(req.RequestURI, "/__undergang_02648018bfd74fa5a4ed50db9bb07859_ws") {
 		return false
 	}
 
 	ws, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
-		log.Printf("Failed to upgrade: %s", err)
+		log.Infof("Failed to upgrade: %v", err)
 		return true
 	}
 	progress := make(chan ProgressCmd, 256)
@@ -138,7 +138,7 @@ func progressBroker(progressChan <-chan ProgressCmd, subscribeChan <-chan chan P
 	}
 }
 
-func serveProgressScript(backend Backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressScript(log *logrus.Entry, backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	if !strings.HasSuffix(req.RequestURI, "/__undergang_02648018bfd74fa5a4ed50db9bb07859_script.js") {
 		return false
 	}
@@ -150,22 +150,23 @@ func serveProgressScript(backend Backend, w http.ResponseWriter, req *http.Reque
 }
 
 func serveProgress(backend Backend, w http.ResponseWriter, req *http.Request) bool {
-	if serveProgressWebSocket(backend, w, req) {
+	log := backend.GetLogger().WithField("type", "progress")
+	if serveProgressWebSocket(log, backend, w, req) {
 		return true
 	}
 
-	if serveProgressScript(backend, w, req) {
+	if serveProgressScript(log, backend, w, req) {
 		return true
 	}
 
-	if serveProgressHtml(backend, w, req) {
+	if serveProgressHtml(log, backend, w, req) {
 		return true
 	}
 
 	return false
 }
 
-func serveProgressHtml(backend Backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressHtml(log *logrus.Entry, backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	// Only do this for modern browsers.
 	useragent := req.Header.Get("User-Agent")
 	if !strings.Contains(useragent, "Mozilla") || isWebsocket(req) {
@@ -215,6 +216,7 @@ func serveProgressHtml(backend Backend, w http.ResponseWriter, req *http.Request
 
 		err = tmpl.Execute(w, templateVars)
 		if err != nil {
+			log.Errorf("Failed to render template: %v", err)
 			io.WriteString(w, "Failed to render template")
 		}
 	}

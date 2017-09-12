@@ -20,6 +20,7 @@ type Backend interface {
 	Connect() net.Conn
 	GetInfo() PathInfo
 	Subscribe(chan ProgressCmd)
+	GetLogger() *logrus.Entry
 }
 
 type backendStruct struct {
@@ -58,6 +59,10 @@ func (b *backendStruct) Subscribe(sub chan ProgressCmd) {
 
 func (b *backendStruct) GetInfo() PathInfo {
 	return b.info
+}
+
+func (b *backendStruct) GetLogger() *logrus.Entry {
+	return b.log
 }
 
 const maxRetriesServer = 15 * 60
@@ -323,17 +328,17 @@ func (b *backendStruct) monitor() {
 	var client *ssh.Client
 	var err error
 
-	b.log = b.log.WithFields(logrus.Fields{
-		"ssh_host": b.info.SSHTunnel.Address,
-		"backend":  b.info.Backend.Address,
-	})
-
 	// Don't connect until we get our initial connection attempt.
 	b.waitUntilStarted()
 
 	if err = b.waitProvisioned(); err != nil {
 		b.failed("Failed to provision", err)
 	}
+
+	b.log = b.log.WithFields(logrus.Fields{
+		"ssh_host": b.info.SSHTunnel.Address,
+		"backend":  b.info.Backend.Address,
+	})
 
 	if err = b.prepareSSH(); err != nil {
 		b.failed("Failed to prepare SSH connection", err)
@@ -366,10 +371,10 @@ func (b *backendStruct) monitor() {
 // NewBackend instantiates a new backend
 func NewBackend(id int, info PathInfo) Backend {
 	log := logrus.New().WithFields(logrus.Fields{
-		"type": "backend",
-		"id":   id,
-		"host": info.Host,
-		"path": info.Prefix,
+		"type":       "backend",
+		"backend_id": id,
+		"host":       info.Host,
+		"path":       info.Prefix,
 	})
 	log.Logger = logrus.StandardLogger()
 

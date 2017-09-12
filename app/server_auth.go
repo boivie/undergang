@@ -20,6 +20,7 @@ func getCookieToken(info PathInfo) string {
 }
 
 func serveValidateServerAuth(backend Backend, w http.ResponseWriter, req *http.Request) bool {
+	log := backend.GetLogger().WithField("type", "server_auth")
 	info := backend.GetInfo()
 	serverAuth := info.ServerAuth
 
@@ -62,13 +63,13 @@ func serveValidateServerAuth(backend Backend, w http.ResponseWriter, req *http.R
 				fmt.Println("User authenticated!")
 				http.Redirect(w, req, originalPath, 302)
 			} else {
-				respond(w, req, "Authentication server failure", http.StatusForbidden)
+				respond(log, w, req, "Authentication server failure", http.StatusForbidden)
 			}
 		} else {
-			respond(w, req, "Authentication server denied code", http.StatusForbidden)
+			respond(log, w, req, "Authentication server denied code", http.StatusForbidden)
 		}
 	} else {
-		respond(w, req, "No code provided", http.StatusForbidden)
+		respond(log, w, req, "No code provided", http.StatusForbidden)
 	}
 
 	return true

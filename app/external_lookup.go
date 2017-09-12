@@ -1,8 +1,9 @@
 package app
 
 import (
+	"github.com/Sirupsen/logrus"
 	"github.com/franela/goreq"
-	"log"
+
 	"net/url"
 	"time"
 )
@@ -13,8 +14,15 @@ type externalLookupResp struct {
 }
 
 func doLookup(host string, path string) *PathInfo {
+	log := logrus.New().WithFields(logrus.Fields{
+		"type": "external_lookup",
+		"host": host,
+		"path": path,
+	})
+	log.Logger = logrus.StandardLogger()
+
+	log.Info("Asking about pathinfo")
 	uri := externalLookupUrl + "?host=" + url.QueryEscape(host) + "&path=" + url.QueryEscape(path)
-	log.Printf("Asking %s about pathinfo\n", uri)
 	req := goreq.Request{
 		Uri:       uri,
 		Accept:    "application/json",
@@ -27,6 +35,8 @@ func doLookup(host string, path string) *PathInfo {
 		ret.Body.FromJsonTo(&path)
 		return &path
 	}
+
+	log.Info("Failed to get pathinfo")
 	return nil
 }
 

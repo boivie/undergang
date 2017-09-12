@@ -2,20 +2,24 @@ package app
 
 import (
 	"encoding/base64"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"strings"
+
+	"github.com/Sirupsen/logrus"
 )
 
-func respond(w http.ResponseWriter, req *http.Request, reply string, status int) {
+func respond(log *logrus.Entry, w http.ResponseWriter, req *http.Request, reply string, status int) {
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
 		host = req.RemoteAddr
 	}
 
-	log.Printf("%s %s %s %d \"%s\"\n", host, req.Method, req.RequestURI, status, reply)
+	if status >= 400 {
+		log.Warnf("Failed to serve URL: %s", reply)
+	}
+	log.Printf("%s %s %s %d \"%s\"", host, req.Method, req.RequestURI, status, reply)
 	http.Error(w, reply, status)
 }
 
@@ -46,12 +50,15 @@ func serveBasicAuth(backend Backend, w http.ResponseWriter, req *http.Request) b
 }
 
 func forward(w http.ResponseWriter, req *http.Request) {
-	log.Printf("%s %s%s", req.Method, req.Host, req.URL.Path)
 	backend := LookupBackend(req.Host, req.URL.Path)
+
 	if backend == nil {
-		respond(w, req, "Path not mapped", http.StatusNotFound)
+		log := logrus.New().WithField("type", "access_log")
+		respond(log, w, req, "Path not mapped", http.StatusNotFound)
 		return
 	}
+	log := backend.GetLogger().WithField("type", "access_log")
+	log.Infof("%s %s%s", req.Method, req.Host, req.URL.Path)
 
 	if serveBasicAuth(backend, w, req) {
 		return
@@ -77,7 +84,7 @@ func forward(w http.ResponseWriter, req *http.Request) {
 
 	conn := backend.Connect()
 	if conn == nil {
-		respond(w, req, "Couldn't connect to backend server", http.StatusServiceUnavailable)
+		respond(log, w, req, "Couldn't connect to backend server", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -90,6 +97,7 @@ func forward(w http.ResponseWriter, req *http.Request) {
 	var revProxy http.Handler
 	if isWebsocket(req) {
 		revProxy = &WebsocketReverseProxy{
+			Backend:  backend,
 			Director: director,
 			Dial: func(network, addr string) (net.Conn, error) {
 				return conn, nil

@@ -2,25 +2,26 @@ package app
 
 import (
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
 )
 
 type WebsocketReverseProxy struct {
+	Backend  Backend
 	Director func(*http.Request)
 	Dial     func(network, addr string) (net.Conn, error)
 }
 
 func (wrp *WebsocketReverseProxy) ServeHTTP(rw http.ResponseWriter, origReq *http.Request) {
+	log := wrp.Backend.GetLogger().WithField("type", "websocket")
 	req := *origReq
 	wrp.Director(&req)
 
 	d, err := wrp.Dial("tcp", req.URL.Host)
 	if err != nil {
 		http.Error(rw, "Error connecting to backend", http.StatusServiceUnavailable)
-		log.Printf("Error dialing websocket backend %s: %v", req.URL, err)
+		log.Infof("Error dialing websocket backend %s: %v", req.URL, err)
 		return
 	}
 
