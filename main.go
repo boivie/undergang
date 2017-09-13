@@ -38,8 +38,16 @@ func main() {
 			Name:  "config",
 			Usage: "Configuration file",
 		},
+		cli.BoolFlag{
+			Name:  "json-log",
+			Usage: "Log in JSON format",
+		},
 	}
 	app.Action = func(c *cli.Context) {
+		if c.Bool("json-log") {
+			log.SetFormatter(&log.JSONFormatter{})
+		}
+
 		log.Info(`
                 __
 .--.--.-----.--|  |.-----.----.-----.---.-.-----.-----.
