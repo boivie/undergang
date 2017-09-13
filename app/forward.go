@@ -54,10 +54,12 @@ func forward(w http.ResponseWriter, req *http.Request) {
 
 	if backend == nil {
 		log := logrus.New().WithField("type", "access_log")
+		log.Logger = logrus.StandardLogger()
 		respond(log, w, req, "Path not mapped", http.StatusNotFound)
 		return
 	}
 	log := backend.GetLogger().WithField("type", "access_log")
+	log.Logger = logrus.StandardLogger()
 	log.Infof("%s %s%s", req.Method, req.Host, req.URL.Path)
 
 	if serveBasicAuth(backend, w, req) {
