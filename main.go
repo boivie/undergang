@@ -47,7 +47,7 @@ func main() {
 |_____|__|__|_____||_____|__| |___  |___._|__|__|___  |
                               |_____|           |_____|
 `)
-		log.Info("version " + version)
+		log.Info("Version " + version)
 
 		ug.Init(c.String("pathinfo"), c.String("access"), c.String("sshproxy"))
 
