@@ -15,6 +15,7 @@ func dumpHandler(w http.ResponseWriter, req *http.Request) {
 	buf := make([]byte, 1<<20)
 	runtime.Stack(buf, true)
 	log.Printf("=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf)
+	io.WriteString(w, "Stack traces dumped to the server logs\n")
 }
 
 func healthHandler(w http.ResponseWriter, req *http.Request) {
