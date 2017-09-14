@@ -7,6 +7,17 @@ before_install:
 - go get -u github.com/golang/dep/cmd/dep
 install:
 - dep ensure -v -vendor-only
+before_script:
+- GO_FILES=$(find . -iname '*.go' | grep -v /vendor/)
+- PKGS=$(go list ./... | grep -v /vendor/)
+- go get github.com/golang/lint/golint
+- go get honnef.co/go/tools/cmd/megacheck
+script:
+- test -z $(gofmt -s -l $GO_FILES)
+- go test -v -race $PKGS
+- go vet $PKGS
+- megacheck $PKGS
+- golint -set_exit_status $PKGS
 after_success:
 - gox -ldflags="-s -w -X main.version=${TRAVIS_TAG:-$TRAVIS_COMMIT}" -output "dist/{{.OS}}_{{.Arch}}_{{.Dir}}"
 - if [ "$TRAVIS_TAG" != "" ]; then ghr --username boivie --token $GITHUB_TOKEN --replace -c $TRAVIS_COMMIT $TRAVIS_TAG dist/; fi
