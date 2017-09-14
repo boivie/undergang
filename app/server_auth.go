@@ -11,9 +11,9 @@ import (
 	"github.com/franela/goreq"
 )
 
-const SERVER_AUTH_ENDPOINT = "/__undergang_02648018bfd74fa5a4ed50db9bb07859_auth"
-const SERVER_AUTH_COOKIE = "undergang_02648018bfd74fa5a4ed50db9bb07859_auth"
-const SERVER_AUTH_DURATION = 24 * 3600
+const serverAuthEndpoint = "/__undergang_02648018bfd74fa5a4ed50db9bb07859_auth"
+const serverAuthCookie = "undergang_02648018bfd74fa5a4ed50db9bb07859_auth"
+const serverAuthDuration = 24 * 3600
 
 func getCookieToken(info PathInfo) string {
 	return base64URLEncode([]byte(info.Host + "/" + info.Prefix))
@@ -28,17 +28,17 @@ func serveValidateServerAuth(backend Backend, w http.ResponseWriter, req *http.R
 		return false
 	}
 
-	if !strings.HasSuffix(req.URL.Path, SERVER_AUTH_ENDPOINT) {
+	if !strings.HasSuffix(req.URL.Path, serverAuthEndpoint) {
 		return false
 	}
 
-	originalPath := strings.Replace(req.URL.Path, SERVER_AUTH_ENDPOINT, "", 1)
+	originalPath := strings.Replace(req.URL.Path, serverAuthEndpoint, "", 1)
 
 	if code := req.URL.Query().Get("code"); code != "" {
-		fmt.Printf("Asking server %s about code %s\n", serverAuth.ValidateUrl, code)
+		fmt.Printf("Asking server %s about code %s\n", serverAuth.ValidateURL, code)
 		gr := goreq.Request{
 			Method:      "POST",
-			Uri:         serverAuth.ValidateUrl,
+			Uri:         serverAuth.ValidateURL,
 			ContentType: "application/x-www-form-urlencoded",
 			Accept:      "application/json",
 			UserAgent:   "Undergang/1.0",
@@ -55,7 +55,7 @@ func serveValidateServerAuth(backend Backend, w http.ResponseWriter, req *http.R
 			if ret.Body.FromJsonTo(&parsed) == nil && parsed.AccessToken != "" {
 				cookie := &http.Cookie{
 					Path:  info.Prefix,
-					Name:  SERVER_AUTH_COOKIE,
+					Name:  serverAuthCookie,
 					Value: NewTimestampSigner(sha1.New()).Sign(getCookieToken(info)),
 				}
 				http.SetCookie(w, cookie)
@@ -95,9 +95,9 @@ func serveServerAuth(backend Backend, w http.ResponseWriter, req *http.Request) 
 		return false
 	}
 
-	cookie, err := req.Cookie(SERVER_AUTH_COOKIE)
+	cookie, err := req.Cookie(serverAuthCookie)
 	if err == nil {
-		payload, err := NewTimestampSigner(sha1.New()).Verify(cookie.Value, SERVER_AUTH_DURATION)
+		payload, err := NewTimestampSigner(sha1.New()).Verify(cookie.Value, serverAuthDuration)
 		if err == nil {
 			if payload == getCookieToken(backend.GetInfo()) {
 				return false
@@ -105,8 +105,8 @@ func serveServerAuth(backend Backend, w http.ResponseWriter, req *http.Request) 
 		}
 	}
 
-	redirect_uri := getScheme(req) + "://" + req.Host + req.URL.Path + SERVER_AUTH_ENDPOINT
-	redirect := serverAuth.AuthUrl + "?redirect_uri=" + url.QueryEscape(redirect_uri)
+	uri := getScheme(req) + "://" + req.Host + req.URL.Path + serverAuthEndpoint
+	redirect := serverAuth.AuthURL + "?redirect_uri=" + url.QueryEscape(uri)
 	http.Redirect(w, req, redirect, 302)
 	return true
 }

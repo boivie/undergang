@@ -1,32 +1,32 @@
 package app
 
-type Command struct {
+type configCommand struct {
 	Description string `json:"description"`
 	Command     string `json:"command"`
 }
 
-type SSHTunnel struct {
+type configSSHTunnel struct {
 	Address        string `json:"address"`
 	Username       string `json:"username"`
 	SSHKeyContents string `json:"ssh_key_contents"`
 	SSHKeyFileName string `json:"ssh_key_filename"`
 
-	Bootstrap []Command `json:"bootstrap"`
-	Run       *Command  `json:"run"`
+	Bootstrap []configCommand `json:"bootstrap"`
+	Run       *configCommand  `json:"run"`
 }
 
-type ConfigBackend struct {
+type configBackend struct {
 	Address  string `json:"address"`
 	BasePath string `json:"base_path"`
 }
 
-type Provisioning struct {
+type configProvisioning struct {
 	// If this is 'started', undergang will periodically poll the /path endpoint every 5 seconds
 	// until it is 'done', 'failed' or the Provisioning field is missing.
 	Status string `json:"status"`
 }
 
-type BasicAuth struct {
+type configBasicAuth struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -36,34 +36,35 @@ type BasicAuth struct {
 // redirected back to $original_url/__ug_auth?code=$code. UG will then do a HTTP POST to ValidateUrl
 // with the code, and if correct, it will return 200 and UG will set a cookie limited to the domain
 // and redirect the user back to $original_url.
-type ServerAuth struct {
-	AuthUrl     string `json:"auth_url"`
-	ValidateUrl string `json:"validate_url"`
+type configServerAuth struct {
+	AuthURL     string `json:"auth_url"`
+	ValidateURL string `json:"validate_url"`
 }
 
-type Style struct {
+type configStyle struct {
 	BackgroundColor string `json:"background_color"`
 }
 
-type ProgressPage struct {
-	Style    *Style `json:"style"`
-	Filename string `json:"filename"`
-	Url      string `json:"url"`
-	Hostname string `json:"hostname"`
+type configProgressPage struct {
+	Style    *configStyle `json:"style"`
+	Filename string       `json:"filename"`
+	URL      string       `json:"url"`
+	Hostname string       `json:"hostname"`
 }
 
+// PathInfo represents the configuration of a backend
 type PathInfo struct {
-	Host         string        `json:"host"`
-	Prefix       string        `json:"prefix"`
-	Provisioning *Provisioning `json:"provisioning"`
-	SSHTunnel    *SSHTunnel    `json:"ssh_tunnel"`
+	Host         string              `json:"host"`
+	Prefix       string              `json:"prefix"`
+	Provisioning *configProvisioning `json:"provisioning"`
+	SSHTunnel    *configSSHTunnel    `json:"ssh_tunnel"`
 
-	Backend         *ConfigBackend    `json:"backend"`
+	Backend         *configBackend    `json:"backend"`
 	StaticOverrides map[string]string `json:"static_overrides"`
 
-	ProgressPage *ProgressPage `json:"progress_page"`
+	ProgressPage *configProgressPage `json:"progress_page"`
 
-	BasicAuth *BasicAuth `json:"basic_auth"`
+	BasicAuth *configBasicAuth `json:"basic_auth"`
 
-	ServerAuth *ServerAuth `json:"server_auth"`
+	ServerAuth *configServerAuth `json:"server_auth"`
 }

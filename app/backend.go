@@ -19,7 +19,7 @@ type Backend interface {
 	IsReady() bool
 	Connect() net.Conn
 	GetInfo() PathInfo
-	Subscribe(chan ProgressCmd)
+	Subscribe(chan progressCmd)
 	GetLogger() *logrus.Entry
 }
 
@@ -27,9 +27,9 @@ type backendStruct struct {
 	id                int
 	info              PathInfo
 	log               *logrus.Entry
-	subscribeProgress chan chan ProgressCmd
+	subscribeProgress chan chan progressCmd
 	getConn           chan chan net.Conn
-	progress          chan ProgressCmd
+	progress          chan progressCmd
 	start             chan bool
 	isReady           bool
 	sshConfig         *ssh.ClientConfig
@@ -53,7 +53,7 @@ func (b *backendStruct) Connect() net.Conn {
 	return <-reply
 }
 
-func (b *backendStruct) Subscribe(sub chan ProgressCmd) {
+func (b *backendStruct) Subscribe(sub chan progressCmd) {
 	b.subscribeProgress <- sub
 }
 
@@ -88,7 +88,7 @@ func (b *backendStruct) isProvisioned() bool {
 
 func (b *backendStruct) waitProvisioned() error {
 	if !b.isProvisioned() {
-		b.progress <- ProgressCmd{"wait_provisioning_start", nil}
+		b.progress <- progressCmd{"wait_provisioning_start", nil}
 		for {
 			newInfo := doLookup(b.info.Host, b.info.Prefix)
 			if newInfo == nil {
@@ -103,7 +103,7 @@ func (b *backendStruct) waitProvisioned() error {
 			time.Sleep(5 * time.Second)
 		}
 		b.log.Info("Provisioning completed")
-		b.progress <- ProgressCmd{"wait_provisioning_end", nil}
+		b.progress <- progressCmd{"wait_provisioning_end", nil}
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func (b *backendStruct) failed(reason string, err error) {
 	}
 }
 
-func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
+func dialSSH(info *configSSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*ssh.Client, error) {
 	var conn net.Conn
 	var err error
 
@@ -139,40 +139,40 @@ func dialSSH(info *SSHTunnel, config *ssh.ClientConfig, proxyCommand string) (*s
 }
 
 func (b *backendStruct) connectSSH() (client *ssh.Client, err error) {
-	b.progress <- ProgressCmd{"connection_start", nil}
+	b.progress <- progressCmd{"connection_start", nil}
 	b.log.Info("Connecting to SSH server")
 	for retry := 0; retry < maxRetriesServer; retry++ {
-		b.progress <- ProgressCmd{"connection_try", nil}
+		b.progress <- progressCmd{"connection_try", nil}
 		client, err = dialSSH(b.info.SSHTunnel, b.sshConfig, proxyCommand)
 		if err == nil {
 			b.log.Infof("Connected to SSH server: %v, err %v", client, err)
 			go generateKeepalive(client)
-			b.progress <- ProgressCmd{"connection_established", nil}
+			b.progress <- progressCmd{"connection_established", nil}
 			return
 		}
 
 		b.log.Warnf("SSH Connection failed: %v - retrying", err)
-		b.progress <- ProgressCmd{"connection_retry", nil}
+		b.progress <- progressCmd{"connection_retry", nil}
 		time.Sleep(1 * time.Second)
 	}
 	b.log.Warnf("SSH Connection retry limit reached")
-	b.progress <- ProgressCmd{"connection_failed", "Connection retry limit reached"}
+	b.progress <- progressCmd{"connection_failed", "Connection retry limit reached"}
 	return nil, errors.New("SSH Connection retry limit reached")
 }
 
 func (b *backendStruct) reconnectSSH() (client *ssh.Client, err error) {
-	b.progress <- ProgressCmd{"reconnection_start", nil}
+	b.progress <- progressCmd{"reconnection_start", nil}
 	b.log.Info("Re-connecting to SSH server")
 	client, err = dialSSH(b.info.SSHTunnel, b.sshConfig, proxyCommand)
 	if err == nil {
 		b.log.Infof("Re-connected to SSH server: %v, err %v", client, err)
 		go generateKeepalive(client)
-		b.progress <- ProgressCmd{"reconnection_established", nil}
+		b.progress <- progressCmd{"reconnection_established", nil}
 		return
 	}
 
 	b.log.Warnf("SSH Re-connection failed. Assuming host is down.")
-	b.progress <- ProgressCmd{"reconnection_failed", "Re-connection failed"}
+	b.progress <- progressCmd{"reconnection_failed", "Re-connection failed"}
 	return nil, err
 }
 
@@ -193,7 +193,7 @@ func (b *backendStruct) bootstrap(client *ssh.Client) (err error) {
 	for idx, cmd := range b.info.SSHTunnel.Bootstrap {
 		b.log.Infof("Started running bootstrap '%s'", cmd.Command)
 		status.Steps[idx].Status = "started"
-		b.progress <- ProgressCmd{"bootstrap_status", status}
+		b.progress <- progressCmd{"bootstrap_status", status}
 		if session, err = client.NewSession(); err != nil {
 			return
 		}
@@ -202,7 +202,7 @@ func (b *backendStruct) bootstrap(client *ssh.Client) (err error) {
 		session.Stderr = os.Stderr
 		session.Run(cmd.Command)
 		status.Steps[idx].Status = "done"
-		b.progress <- ProgressCmd{"bootstrap_status", status}
+		b.progress <- progressCmd{"bootstrap_status", status}
 		b.log.Infof("Finished running bootstrap '%s'", cmd.Command)
 	}
 
@@ -236,14 +236,14 @@ func (b *backendStruct) prepareSSH() (err error) {
 	if b.info.SSHTunnel.SSHKeyFileName != "" {
 		sshKey, err = ioutil.ReadFile(b.info.SSHTunnel.SSHKeyFileName)
 		if err != nil {
-			b.progress <- ProgressCmd{"connection_failed", "Failed to read SSH key"}
+			b.progress <- progressCmd{"connection_failed", "Failed to read SSH key"}
 			return
 		}
 	}
 
 	key, err := ssh.ParsePrivateKey(sshKey)
 	if err != nil {
-		b.progress <- ProgressCmd{"connection_failed", "Failed to parse SSH key"}
+		b.progress <- progressCmd{"connection_failed", "Failed to parse SSH key"}
 		return
 	}
 
@@ -288,14 +288,14 @@ func (b *backendStruct) connectionCreator(client *ssh.Client, onError chan error
 }
 
 func (b *backendStruct) waitBackend(client *ssh.Client) (err error) {
-	b.progress <- ProgressCmd{"waiting_backend", nil}
+	b.progress <- progressCmd{"waiting_backend", nil}
 	for retries := 0; retries < maxRetriesClient; retries++ {
 		b.log.Info("Waiting for backend to be ready...")
 		var conn net.Conn
 		if conn, err = client.Dial("tcp", b.info.Backend.Address); err == nil {
 			defer conn.Close()
 			b.log.Info("Backend is ready.")
-			b.progress <- ProgressCmd{"connection_success", nil}
+			b.progress <- progressCmd{"connection_success", nil}
 			return
 		} else if err == io.EOF {
 			b.log.Warnf("Disconnected from SSH server while connecting to %s: %v - re-connecting SSH", b.info.Backend.Address, err)
@@ -306,11 +306,11 @@ func (b *backendStruct) waitBackend(client *ssh.Client) (err error) {
 		}
 
 		b.log.Warnf("Backend not ready yet. (%v)", err)
-		b.progress <- ProgressCmd{"waiting_backend_retry", nil}
+		b.progress <- progressCmd{"waiting_backend_retry", nil}
 		time.Sleep(5 * time.Second)
 	}
 	b.log.Warn("Waiting backend retry limit reached. Aborting.")
-	b.progress <- ProgressCmd{"waiting_backend_timeout", "Connection retry limit reached"}
+	b.progress <- progressCmd{"waiting_backend_timeout", "Connection retry limit reached"}
 	err = errors.New("Backend retry limit reached")
 	return
 }
@@ -383,9 +383,9 @@ func NewBackend(id int, info PathInfo) Backend {
 		id,
 		info,
 		log,
-		make(chan chan ProgressCmd),
+		make(chan chan progressCmd),
 		make(chan chan net.Conn, 1000),
-		make(chan ProgressCmd),
+		make(chan progressCmd),
 		make(chan bool),
 		false,
 		nil,

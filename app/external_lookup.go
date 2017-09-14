@@ -22,7 +22,7 @@ func doLookup(host string, path string) *PathInfo {
 	log.Logger = logrus.StandardLogger()
 
 	log.Info("Asking about pathinfo")
-	uri := externalLookupUrl + "?host=" + url.QueryEscape(host) + "&path=" + url.QueryEscape(path)
+	uri := externalLookupURL + "?host=" + url.QueryEscape(host) + "&path=" + url.QueryEscape(path)
 	req := goreq.Request{
 		Uri:       uri,
 		Accept:    "application/json",

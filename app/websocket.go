@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-type WebsocketReverseProxy struct {
+type websocketReverseProxy struct {
 	Backend  Backend
 	Director func(*http.Request)
 	Dial     func(network, addr string) (net.Conn, error)
 }
 
-func (wrp *WebsocketReverseProxy) ServeHTTP(rw http.ResponseWriter, origReq *http.Request) {
+func (wrp *websocketReverseProxy) ServeHTTP(rw http.ResponseWriter, origReq *http.Request) {
 	log := wrp.Backend.GetLogger().WithField("type", "websocket")
 	req := *origReq
 	wrp.Director(&req)
@@ -56,19 +56,19 @@ func (wrp *WebsocketReverseProxy) ServeHTTP(rw http.ResponseWriter, origReq *htt
 }
 
 func isWebsocket(req *http.Request) bool {
-	conn_hdr := ""
-	conn_hdrs := req.Header["Connection"]
-	if len(conn_hdrs) > 0 {
-		conn_hdr = conn_hdrs[0]
+	connHdr := ""
+	connHdrs := req.Header["Connection"]
+	if len(connHdrs) > 0 {
+		connHdr = connHdrs[0]
 	}
 
-	upgrade_websocket := false
-	if strings.ToLower(conn_hdr) == "upgrade" {
-		upgrade_hdrs := req.Header["Upgrade"]
-		if len(upgrade_hdrs) > 0 {
-			upgrade_websocket = (strings.ToLower(upgrade_hdrs[0]) == "websocket")
+	upgradeWebsocket := false
+	if strings.ToLower(connHdr) == "upgrade" {
+		upgradeHdrs := req.Header["Upgrade"]
+		if len(upgradeHdrs) > 0 {
+			upgradeWebsocket = (strings.ToLower(upgradeHdrs[0]) == "websocket")
 		}
 	}
 
-	return upgrade_websocket
+	return upgradeWebsocket
 }

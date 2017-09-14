@@ -98,7 +98,7 @@ func forward(w http.ResponseWriter, req *http.Request) {
 
 	var revProxy http.Handler
 	if isWebsocket(req) {
-		revProxy = &WebsocketReverseProxy{
+		revProxy = &websocketReverseProxy{
 			Backend:  backend,
 			Director: director,
 			Dial: func(network, addr string) (net.Conn, error) {

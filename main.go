@@ -11,7 +11,7 @@ import (
 	"github.com/urfave/cli"
 )
 
-var version string = "(locally built)"
+var version = "(locally built)"
 
 func main() {
 	log.SetFormatter(&log.TextFormatter{})
@@ -57,7 +57,7 @@ func main() {
 `)
 		log.Info("Version " + version)
 
-		ug.Init(c.String("pathinfo"), c.String("access"), c.String("sshproxy"))
+		ug.Init(c.String("pathinfo"), c.String("sshproxy"))
 
 		if c.String("config") != "" {
 			var config struct {

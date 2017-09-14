@@ -10,14 +10,16 @@ import (
 )
 
 const (
-	EPOCH = 1293840000
+	epoch = 1293840000
 )
 
+// Signer signs a payload
 type Signer struct {
 	h   hash.Hash
 	Sep string
 }
 
+// NewSigner creates a new signer
 func NewSigner(h hash.Hash) *Signer {
 	return &Signer{
 		h:   h,
@@ -60,7 +62,7 @@ func bytesToInt(b []byte) int64 {
 		pos := len(b) - 1 - i
 		unixTime |= int64(v) << (uint(pos) * 8)
 	}
-	unixTime += EPOCH
+	unixTime += epoch
 	return unixTime
 }
 
@@ -70,10 +72,12 @@ func (s *Signer) signature(b string) string {
 	return base64URLEncode(s.h.Sum(nil))
 }
 
+// Sign signs a payload
 func (s *Signer) Sign(msg string) string {
 	return msg + s.Sep + s.signature(msg)
 }
 
+// Verify verifies that the message has been untampered
 func (s Signer) Verify(b string) (string, error) {
 	msg, signature, ok := splitRight(b, s.Sep)
 	if !ok {
@@ -86,28 +90,34 @@ func (s Signer) Verify(b string) (string, error) {
 	return msg, nil
 }
 
+// TimestampSigner signs a message that has to be verified within a duration
 type TimestampSigner struct {
 	*Signer
 }
 
+// NewTimestampSigner creates a new TimestampSigner
 func NewTimestampSigner(h hash.Hash) *TimestampSigner {
 	return &TimestampSigner{
 		Signer: NewSigner(h),
 	}
 }
 
+// Sign signs a message
 func (s *TimestampSigner) Sign(msg string) string {
 	return s.SignWithTime(msg, time.Now().Unix())
 }
 
+// SignWithTime signs a message with a given timestamp
 func (s *TimestampSigner) SignWithTime(msg string, now int64) string {
-	return s.Signer.Sign(msg + s.Sep + base64URLEncode(intToBytes(now-EPOCH)))
+	return s.Signer.Sign(msg + s.Sep + base64URLEncode(intToBytes(now-epoch)))
 }
 
+// Verify verifies that the message was signed within the specified duration
 func (s *TimestampSigner) Verify(b string, dur time.Duration) (string, error) {
 	return s.VerifyWithTime(b, time.Now().Unix(), dur)
 }
 
+// VerifyWithTime verifies that the message was signed within the specified duration
 func (s *TimestampSigner) VerifyWithTime(b string, now int64, dur time.Duration) (string, error) {
 	msg, err := s.Signer.Verify(b)
 	if err != nil {
@@ -124,7 +134,7 @@ func (s *TimestampSigner) VerifyWithTime(b string, now int64, dur time.Duration)
 		return "", err
 	}
 
-	unixTime := bytesToInt(timeBytes) + EPOCH
+	unixTime := bytesToInt(timeBytes) + epoch
 
 	if time.Unix(now, 0).Sub(time.Unix(unixTime, 0)) > dur {
 		return "", errors.New("Token expired")

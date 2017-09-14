@@ -15,7 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type ProgressCmd struct {
+type progressCmd struct {
 	Kind string      `json:"kind"`
 	Data interface{} `json:"data"`
 }
@@ -37,7 +37,7 @@ var upgrader = websocket.Upgrader{
 
 type connection struct {
 	ws       *websocket.Conn
-	progress chan ProgressCmd
+	progress chan progressCmd
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -102,7 +102,7 @@ func serveProgressWebSocket(log *logrus.Entry, backend Backend, w http.ResponseW
 		log.Infof("Failed to upgrade: %v", err)
 		return true
 	}
-	progress := make(chan ProgressCmd, 256)
+	progress := make(chan progressCmd, 256)
 	c := &connection{ws: ws, progress: progress}
 
 	backend.Subscribe(progress)
@@ -112,15 +112,9 @@ func serveProgressWebSocket(log *logrus.Entry, backend Backend, w http.ResponseW
 	return true
 }
 
-type broadcastMsg struct {
-	subscriber string
-	kind       string
-	data       interface{}
-}
-
-func progressBroker(progressChan <-chan ProgressCmd, subscribeChan <-chan chan ProgressCmd) {
-	progress := make([]ProgressCmd, 0)
-	subscribers := make([]chan ProgressCmd, 0)
+func progressBroker(progressChan <-chan progressCmd, subscribeChan <-chan chan progressCmd) {
+	progress := make([]progressCmd, 0)
+	subscribers := make([]chan progressCmd, 0)
 	for {
 		select {
 		case msg := <-progressChan:
@@ -159,14 +153,14 @@ func serveProgress(backend Backend, w http.ResponseWriter, req *http.Request) bo
 		return true
 	}
 
-	if serveProgressHtml(log, backend, w, req) {
+	if serveProgressHTML(log, backend, w, req) {
 		return true
 	}
 
 	return false
 }
 
-func serveProgressHtml(log *logrus.Entry, backend Backend, w http.ResponseWriter, req *http.Request) bool {
+func serveProgressHTML(log *logrus.Entry, backend Backend, w http.ResponseWriter, req *http.Request) bool {
 	// Only do this for modern browsers.
 	useragent := req.Header.Get("User-Agent")
 	if !strings.Contains(useragent, "Mozilla") || isWebsocket(req) {
@@ -189,9 +183,9 @@ func serveProgressHtml(log *logrus.Entry, backend Backend, w http.ResponseWriter
 	// Serve custom progress file?
 	if info.ProgressPage != nil && info.ProgressPage.Filename != "" {
 		http.ServeFile(w, req, info.ProgressPage.Filename)
-	} else if info.ProgressPage != nil && info.ProgressPage.Url != "" {
+	} else if info.ProgressPage != nil && info.ProgressPage.URL != "" {
 		director := func(req *http.Request) {
-			req.URL, _ = url.Parse(info.ProgressPage.Url)
+			req.URL, _ = url.Parse(info.ProgressPage.URL)
 			req.Host = req.URL.Host
 			if info.ProgressPage.Hostname != "" {
 				req.Host = info.ProgressPage.Hostname

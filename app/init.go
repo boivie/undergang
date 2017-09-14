@@ -7,7 +7,7 @@ import (
 	"runtime"
 )
 
-var externalLookupUrl string
+var externalLookupURL string
 var proxyCommand string
 
 func dumpHandler(w http.ResponseWriter, req *http.Request) {
@@ -20,9 +20,10 @@ func healthHandler(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "OK\n")
 }
 
-func Init(externalPathLookupUrl_ string, accessLookupUrl string, proxyCommand_ string) {
-	proxyCommand = proxyCommand_
-	externalLookupUrl = externalPathLookupUrl_
+// Init initializes the application
+func Init(extPathLookupURL string, proxyCmd string) {
+	proxyCommand = proxyCmd
+	externalLookupURL = extPathLookupURL
 	go backendManager()
 
 	http.HandleFunc("/__ug__dump", dumpHandler)

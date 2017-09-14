@@ -30,18 +30,21 @@ var addPathChan = make(chan addPathReq)
 var lookupChan = make(chan lookupReq)
 var unregisterChan = make(chan unregisterReq)
 
+// AddPath adds a backend to the manager
 func AddPath(info PathInfo) {
 	reply := make(chan error)
 	addPathChan <- addPathReq{info, reply}
 	<-reply
 }
 
+// LookupBackend looks up a backend given a host and path
 func LookupBackend(host, path string) Backend {
 	reply := make(chan Backend)
 	lookupChan <- lookupReq{host, path, reply}
 	return <-reply
 }
 
+// UnregisterBackend unregisters a backend from the manager
 func UnregisterBackend(id int) {
 	unregisterChan <- unregisterReq{id}
 }
@@ -83,7 +86,7 @@ func backendManager() {
 	externalLookupReq := make(chan lookupReq, 100)
 	externalLookupResp := make(chan externalLookupResp, 100)
 
-	if externalLookupUrl != "" {
+	if externalLookupURL != "" {
 		for w := 1; w <= 5; w++ {
 			go externalLookupWorker(externalLookupReq, externalLookupResp)
 		}
@@ -114,7 +117,7 @@ func backendManager() {
 		case msg := <-lookupChan:
 			ret := lookupPath(mapping, msg.host, msg.path)
 
-			if ret == nil && externalLookupUrl != "" {
+			if ret == nil && externalLookupURL != "" {
 				externalLookupReq <- msg
 			} else {
 				if ret != nil {
