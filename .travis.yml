@@ -1,15 +1,9 @@
-sudo: false
 language: go
 go:
-- 1.8
-env:
-- PATH=/home/travis/gopath/bin:$PATH
+- 1.9
 before_install:
 - go get github.com/mitchellh/gox
 - go get github.com/tcnksm/ghr
-script:
-- go get ./... && go build && go test ./...
 after_success:
-- gox -output "dist/{{.OS}}_{{.Arch}}_{{.Dir}}"
-- if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then ghr --username boivie --token $GITHUB_TOKEN --replace --prerelease --debug -c $TRAVIS_COMMIT latest dist/; fi
+- gox -ldflags="-s -w -X main.version=${TRAVIS_TAG:-$TRAVIS_COMMIT}" -output "dist/{{.OS}}_{{.Arch}}_{{.Dir}}"
 - if [ "$TRAVIS_TAG" != "" ]; then ghr --username boivie --token $GITHUB_TOKEN --replace -c $TRAVIS_COMMIT $TRAVIS_TAG dist/; fi
