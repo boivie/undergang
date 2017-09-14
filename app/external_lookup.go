@@ -26,7 +26,7 @@ func doLookup(host string, path string) *PathInfo {
 	req := goreq.Request{
 		Uri:       uri,
 		Accept:    "application/json",
-		UserAgent: "Undergang/1.0",
+		UserAgent: "Undergang/" + undergangVersion,
 		Timeout:   5 * time.Second,
 	}
 

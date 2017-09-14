@@ -57,7 +57,7 @@ func main() {
 `)
 		log.Info("Version " + version)
 
-		ug.Init(c.String("pathinfo"), c.String("sshproxy"))
+		ug.Init(c.String("pathinfo"), c.String("sshproxy"), version)
 
 		if c.String("config") != "" {
 			var config struct {

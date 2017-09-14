@@ -41,7 +41,7 @@ func serveValidateServerAuth(backend Backend, w http.ResponseWriter, req *http.R
 			Uri:         serverAuth.ValidateURL,
 			ContentType: "application/x-www-form-urlencoded",
 			Accept:      "application/json",
-			UserAgent:   "Undergang/1.0",
+			UserAgent:   "Undergang/" + undergangVersion,
 			Body:        "code=" + code + "&host=" + req.Host + "&path=" + originalPath,
 			Timeout:     5 * time.Second,
 		}
