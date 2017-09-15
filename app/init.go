@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"runtime"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var externalLookupURL string
@@ -36,5 +38,6 @@ func Init(extPathLookupURL, proxyCmd, version string) {
 	http.HandleFunc("/__ug__dump", dumpHandler)
 	http.HandleFunc("/__ug__health", healthHandler)
 	http.HandleFunc("/__ug__version", versionHandler)
+	http.Handle("/__ug__metrics", promhttp.Handler())
 	http.HandleFunc("/", forward)
 }

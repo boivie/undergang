@@ -5,9 +5,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func respond(log *logrus.Entry, w http.ResponseWriter, req *http.Request, reply string, status int) {
@@ -19,6 +21,7 @@ func respond(log *logrus.Entry, w http.ResponseWriter, req *http.Request, reply 
 	if status >= 400 {
 		log.Warnf("Failed to serve URL: %s", reply)
 	}
+	HTTPResponseCtr.With(prometheus.Labels{"code": string(strconv.Itoa(status))}).Inc()
 	log.Printf("%s %s %s %d \"%s\"", host, req.Method, req.RequestURI, status, reply)
 	http.Error(w, reply, status)
 }
@@ -27,7 +30,7 @@ func serveBasicAuth(backend Backend, w http.ResponseWriter, req *http.Request) b
 	if authInfo := backend.GetInfo().BasicAuth; authInfo != nil {
 		authError := func() bool {
 			w.Header().Set("WWW-Authenticate", "Basic realm=\"Restricted Access\"")
-			http.Error(w, "authorization failed", http.StatusUnauthorized)
+			respond(backend.GetLogger(), w, req, "authorization failed", http.StatusUnauthorized)
 			return true
 		}
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -88,6 +89,7 @@ func (b *backendStruct) isProvisioned() bool {
 
 func (b *backendStruct) waitProvisioned() error {
 	if !b.isProvisioned() {
+		start := time.Now()
 		b.progress <- progressCmd{"wait_provisioning_start", nil}
 		for {
 			newInfo := doLookup(b.info.Host, b.info.Prefix)
@@ -102,6 +104,7 @@ func (b *backendStruct) waitProvisioned() error {
 			b.log.Info("Provisioning - retry...")
 			time.Sleep(5 * time.Second)
 		}
+		BackendProvisioningDuration.Observe(time.Since(start).Seconds())
 		b.log.Info("Provisioning completed")
 		b.progress <- progressCmd{"wait_provisioning_end", nil}
 	}
@@ -110,6 +113,7 @@ func (b *backendStruct) waitProvisioned() error {
 
 func (b *backendStruct) failed(reason string, err error) {
 	b.log.Warnf("ENTER FAILED STATE, due to %s: %v", reason, err)
+	BackendFailure.With(prometheus.Labels{"reason": reason}).Inc()
 	// lame duck mode.
 	UnregisterBackend(b.id)
 	for {
@@ -139,12 +143,14 @@ func dialSSH(info *configSSHTunnel, config *ssh.ClientConfig, proxyCommand strin
 }
 
 func (b *backendStruct) connectSSH() (client *ssh.Client, err error) {
+	start := time.Now()
 	b.progress <- progressCmd{"connection_start", nil}
 	b.log.Info("Connecting to SSH server")
 	for retry := 0; retry < maxRetriesServer; retry++ {
 		b.progress <- progressCmd{"connection_try", nil}
 		client, err = dialSSH(b.info.SSHTunnel, b.sshConfig, proxyCommand)
 		if err == nil {
+			BackendConnectSSHDuration.Observe(time.Since(start).Seconds())
 			b.log.Infof("Connected to SSH server: %v, err %v", client, err)
 			go generateKeepalive(client)
 			b.progress <- progressCmd{"connection_established", nil}
@@ -166,6 +172,7 @@ func (b *backendStruct) reconnectSSH() (client *ssh.Client, err error) {
 	client, err = dialSSH(b.info.SSHTunnel, b.sshConfig, proxyCommand)
 	if err == nil {
 		b.log.Infof("Re-connected to SSH server: %v, err %v", client, err)
+		BackendReconnectSSH.Inc()
 		go generateKeepalive(client)
 		b.progress <- progressCmd{"reconnection_established", nil}
 		return
@@ -177,6 +184,12 @@ func (b *backendStruct) reconnectSSH() (client *ssh.Client, err error) {
 }
 
 func (b *backendStruct) bootstrap(client *ssh.Client) (err error) {
+	if len(b.info.SSHTunnel.Bootstrap) == 0 && b.info.SSHTunnel.Run == nil {
+		return
+	}
+
+	start := time.Now()
+
 	type BootstrapStep struct {
 		Description string `json:"description"`
 		Status      string `json:"status"`
@@ -224,6 +237,7 @@ func (b *backendStruct) bootstrap(client *ssh.Client) (err error) {
 		session.Start(b.info.SSHTunnel.Run.Command)
 		time.Sleep(500 * time.Millisecond)
 	}
+	BackendBootstrapDuration.Observe(time.Since(start).Seconds())
 	return
 }
 
@@ -317,6 +331,7 @@ func (b *backendStruct) waitBackend(client *ssh.Client) (err error) {
 
 func (b *backendStruct) waitUntilStarted() {
 	<-b.start
+	BackendsStarted.Inc()
 	b.log.Info("Woke up")
 	// Just a goroutine that eats up all future start calls.
 	go func() {
@@ -333,7 +348,7 @@ func (b *backendStruct) monitor() {
 	b.waitUntilStarted()
 
 	if err = b.waitProvisioned(); err != nil {
-		b.failed("Failed to provision", err)
+		b.failed("provisioning", err)
 	}
 
 	b.log = b.log.WithFields(logrus.Fields{
@@ -342,19 +357,19 @@ func (b *backendStruct) monitor() {
 	})
 
 	if err = b.prepareSSH(); err != nil {
-		b.failed("Failed to prepare SSH connection", err)
+		b.failed("prepare_ssh", err)
 	}
 
 	if client, err = b.connectSSH(); err != nil {
-		b.failed("Failed to do initial SSH connection", err)
+		b.failed("connect_ssh", err)
 	}
 
 	if err = b.bootstrap(client); err != nil {
-		b.failed("Failed to bootstrap", err)
+		b.failed("bootstrap", err)
 	}
 
 	if err = b.waitBackend(client); err != nil {
-		b.failed("Failed waiting for backend", err)
+		b.failed("wait_backend_ready", err)
 	}
 	b.isReady = true
 
@@ -364,7 +379,7 @@ func (b *backendStruct) monitor() {
 		err = <-connectionError
 		b.log.Warnf("Connection error: %v - reconnecting", err)
 		if client, err = b.reconnectSSH(); err != nil {
-			b.failed("Failed to reconnect", err)
+			b.failed("reconnect_ssh", err)
 		}
 	}
 }

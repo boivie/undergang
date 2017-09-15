@@ -104,6 +104,8 @@ func backendManager() {
 		currentID++
 		backend := NewBackend(currentID, info)
 		log.Infof("Adding backend %d -> '%s%s'", currentID, info.Host, info.Prefix)
+		BackendsRegistered.Inc()
+		BackendActive.Inc()
 		mapping[key] = backend
 		return backend
 	}
@@ -139,6 +141,8 @@ func backendManager() {
 			for mapkey, backend := range mapping {
 				if backend.ID() == req.id {
 					log.Infof("Removing backend %d -> '%s%s'", req.id, backend.GetInfo().Host, backend.GetInfo().Prefix)
+					BackendsUnregistered.Inc()
+					BackendActive.Dec()
 					delete(mapping, mapkey)
 				}
 			}
