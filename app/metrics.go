@@ -84,4 +84,13 @@ var (
 
 func init() {
 	prometheus.MustRegister(HTTPResponseCtr)
+	prometheus.MustRegister(BackendActive)
+	prometheus.MustRegister(BackendsRegistered)
+	prometheus.MustRegister(BackendsStarted)
+	prometheus.MustRegister(BackendsUnregistered)
+	prometheus.MustRegister(BackendFailure)
+	prometheus.MustRegister(BackendReconnectSSH)
+	prometheus.MustRegister(BackendProvisioningDuration)
+	prometheus.MustRegister(BackendConnectSSHDuration)
+	prometheus.MustRegister(BackendBootstrapDuration)
 }
