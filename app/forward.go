@@ -92,6 +92,7 @@ func forward(w http.ResponseWriter, req *http.Request) {
 		respond(log, w, req, "Couldn't connect to backend server", http.StatusServiceUnavailable)
 		return
 	}
+	defer conn.Close()
 
 	director := func(req *http.Request) {
 		req.URL.Path = backend.GetInfo().Backend.BasePath + strings.TrimPrefix(req.URL.Path, backend.GetInfo().Prefix)
